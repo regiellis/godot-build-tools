@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	ConfigPath string
+	Created    bool            `toml:"-"`
 	Paths      Paths           `toml:"paths"`
 	Branches   Branches        `toml:"branches"`
 	Defaults   Defaults        `toml:"defaults"`
@@ -93,13 +94,18 @@ func Load() (*Config, error) {
 		Path: filepath.Join(cfg.Paths.BuildRoot, "godot-nv"),
 	}
 
-	if fileExists(configPath) {
-		var userCfg Config
-		if _, err := toml.DecodeFile(configPath, &userCfg); err != nil {
-			return nil, fmt.Errorf("decode config file: %w", err)
+	if !fileExists(configPath) {
+		if _, err := cfg.InitIfMissing(false); err != nil {
+			return nil, err
 		}
-		mergeConfig(cfg, &userCfg)
+		cfg.Created = true
 	}
+
+	var userCfg Config
+	if _, err := toml.DecodeFile(configPath, &userCfg); err != nil {
+		return nil, fmt.Errorf("decode config file: %w", err)
+	}
+	mergeConfig(cfg, &userCfg)
 
 	return cfg, nil
 }
