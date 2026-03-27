@@ -1,5 +1,6 @@
 # GBT - Godot Build Tools
 
+[![Build][build-badge]][build-workflow]
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue)](https://golang.org/)
 [![Godot Version](https://img.shields.io/badge/godot-4.6%20%7C%20dev-blue)](https://godotengine.org/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)](LICENSE)
@@ -276,3 +277,6 @@ go run .\cmd\godot-build --help
 - The CLI shim flow is designed around a user-level personal bin so it can avoid permission problems.
 - `install-self` is meant to make `gbt` itself easy to place on PATH without admin rights.
 
+
+[build-badge]: https://github.com/regiellis/godot-build-tools/actions/workflows/ci.yml/badge.svg
+[build-workflow]: https://github.com/regiellis/godot-build-tools/actions/workflows/ci.yml
