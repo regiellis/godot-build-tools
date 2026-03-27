@@ -42,15 +42,15 @@ func (a *app) deployTemplates(repo string, versionOverride string) error {
 		return err
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("no export template binaries found in %s", binDir)
+		return fmt.Errorf("No export template binaries were found in %s. Build the template presets first.", binDir)
 	}
 	appdata := os.Getenv("APPDATA")
 	if appdata == "" {
-		return fmt.Errorf("APPDATA not set")
+		return fmt.Errorf("APPDATA is not set, so GBT does not know where to install export templates.")
 	}
 	version := a.detectTemplateVersion(repo, versionOverride)
 	destDir := filepath.Join(appdata, "Godot", "export_templates", version)
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
+	if err := a.mkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
 	rows := [][]ui.Cell{}
@@ -70,7 +70,7 @@ func (a *app) deployTemplates(repo string, versionOverride string) error {
 		if isConsole {
 			destName = fmt.Sprintf("windows_%s_%s_console.exe", targetType, arch)
 		}
-		if err := copyFile(src, filepath.Join(destDir, destName)); err != nil {
+		if err := a.copyFile(src, filepath.Join(destDir, destName)); err != nil {
 			return err
 		}
 		rows = append(rows, []ui.Cell{{Text: name, Style: "val"}, {Text: destName, Style: "val"}})
@@ -78,7 +78,11 @@ func (a *app) deployTemplates(repo string, versionOverride string) error {
 	}
 	a.ui.Panel("Deploy Templates", filepath.Base(repo)+"\nVersion: "+version)
 	a.ui.Table("Templates", []ui.Cell{{Text: "Source"}, {Text: "Destination"}}, rows)
-	a.ui.Success(fmt.Sprintf("Template deploy complete. %d files -> %s", copies, destDir))
+	if a.dryRun {
+		a.ui.Success(fmt.Sprintf("Dry-run complete. %d file(s) would be installed into %s", copies, destDir))
+	} else {
+		a.ui.Success(fmt.Sprintf("Template deploy complete. %d files -> %s", copies, destDir))
+	}
 	return nil
 }
 
@@ -126,14 +130,14 @@ func (a *app) deployEditor(repoPath, repoName, presetName string, mono bool, cha
 		if strings.Contains(name, ".console.") {
 			dest = consoleName
 		}
-		if err := copyFile(filepath.Join(binDir, name), filepath.Join(a.cfg.Paths.DeployDir, dest)); err != nil {
+		if err := a.copyFile(filepath.Join(binDir, name), filepath.Join(a.cfg.Paths.DeployDir, dest)); err != nil {
 			return err
 		}
 		deployed = append(deployed, dest)
 		rows = append(rows, []ui.Cell{{Text: name, Style: "val"}, {Text: dest, Style: "val"}})
 	}
 	if found == 0 {
-		return fmt.Errorf("no editor binaries found in %s", binDir)
+		return fmt.Errorf("No editor binaries were found in %s. Build an editor preset first.", binDir)
 	}
 	if err := a.writeDeployMeta(channel, repoName, presetName, info, deployed); err != nil {
 		return err
@@ -141,6 +145,10 @@ func (a *app) deployEditor(repoPath, repoName, presetName string, mono bool, cha
 	a.refreshShims()
 	a.ui.Panel("Deploy", fmt.Sprintf("%s @ %s\nChannel: %s", info.Branch, info.Commit, channel))
 	a.ui.Table("Editor Binaries", []ui.Cell{{Text: "Source"}, {Text: "Destination"}}, rows)
-	a.ui.Success(fmt.Sprintf("Deploy complete. Run %s to launch", a.launchCommand(channel, mono)))
+	if a.dryRun {
+		a.ui.Success(fmt.Sprintf("Dry-run complete. Run %s to launch after a real deploy.", a.launchCommand(channel, mono)))
+	} else {
+		a.ui.Success(fmt.Sprintf("Deploy complete. Run %s to launch", a.launchCommand(channel, mono)))
+	}
 	return nil
 }

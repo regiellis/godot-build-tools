@@ -17,6 +17,7 @@ func (a *app) cmdConfig(global globalOptions, args []string) error {
 			{{Text: "config show", Style: "info-cmd"}, {Text: "Show the resolved config", Style: "val"}},
 			{{Text: "config path", Style: "info-cmd"}, {Text: "Print the config file path", Style: "val"}},
 			{{Text: "config keys", Style: "info-cmd"}, {Text: "List editable config keys", Style: "val"}},
+			{{Text: "config validate", Style: "info-cmd"}, {Text: "Check whether the saved config is usable", Style: "val"}},
 			{{Text: "config get <key>", Style: "info-cmd"}, {Text: "Read a single config value", Style: "val"}},
 			{{Text: "config set <key> <value>", Style: "info-cmd"}, {Text: "Update a config value", Style: "val"}},
 			{{Text: "config unset <key>", Style: "info-cmd"}, {Text: "Clear a config value", Style: "val"}},
@@ -42,6 +43,8 @@ func (a *app) cmdConfig(global globalOptions, args []string) error {
 		}
 		a.ui.Table("Editable Keys", []ui.Cell{{Text: "Key"}}, rows)
 		return nil
+	case "validate":
+		return a.cmdConfigValidate()
 	case "init":
 		fs, err := parseCommandFlags("config init", rest, func(fs *flag.FlagSet) {
 			fs.Bool("force", false, "Overwrite existing config")
@@ -51,11 +54,15 @@ func (a *app) cmdConfig(global globalOptions, args []string) error {
 			return err
 		}
 		force := fs.Lookup("force").Value.String() == "true"
+		a.ui.Panel("Config Init", a.cfg.ConfigPath)
+		if a.dryRun {
+			a.ui.Warning("Dry-run: config file not written")
+			return nil
+		}
 		written, err := a.cfg.InitIfMissing(force)
 		if err != nil {
 			return err
 		}
-		a.ui.Panel("Config Init", a.cfg.ConfigPath)
 		if written {
 			a.ui.Success("Wrote config file")
 		} else {
@@ -66,27 +73,45 @@ func (a *app) cmdConfig(global globalOptions, args []string) error {
 		if len(rest) < 2 {
 			return usageError("usage: config set <key> <value>")
 		}
+		key := rest[0]
 		value := strings.Join(rest[1:], " ")
-		if err := a.cfg.Set(rest[0], value); err != nil {
+		if err := a.cfg.ValidateSet(key, value); err != nil {
+			return err
+		}
+		if a.dryRun {
+			a.ui.Table("Config Update Plan", []ui.Cell{{Text: "Key"}, {Text: "Value"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}, {Text: value, Style: "val"}}})
+			a.ui.Warning("Dry-run: config file not written")
+			return nil
+		}
+		if err := a.cfg.Set(key, value); err != nil {
 			return err
 		}
 		if err := a.cfg.Save(); err != nil {
 			return err
 		}
-		a.ui.Table("Config Updated", []ui.Cell{{Text: "Key"}, {Text: "Value"}}, [][]ui.Cell{{{Text: rest[0], Style: "info-cmd"}, {Text: value, Style: "val"}}})
+		a.ui.Table("Config Updated", []ui.Cell{{Text: "Key"}, {Text: "Value"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}, {Text: value, Style: "val"}}})
 		a.ui.Success("Updated config value")
 		return nil
 	case "unset":
 		if len(rest) < 1 {
 			return usageError("usage: config unset <key>")
 		}
-		if err := a.cfg.Unset(rest[0]); err != nil {
+		key := rest[0]
+		if err := a.cfg.ValidateUnset(key); err != nil {
+			return err
+		}
+		if a.dryRun {
+			a.ui.Table("Config Clear Plan", []ui.Cell{{Text: "Key"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}}})
+			a.ui.Warning("Dry-run: config file not written")
+			return nil
+		}
+		if err := a.cfg.Unset(key); err != nil {
 			return err
 		}
 		if err := a.cfg.Save(); err != nil {
 			return err
 		}
-		a.ui.Table("Config Cleared", []ui.Cell{{Text: "Key"}}, [][]ui.Cell{{{Text: rest[0], Style: "info-cmd"}}})
+		a.ui.Table("Config Cleared", []ui.Cell{{Text: "Key"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}}})
 		a.ui.Success("Cleared config value")
 		return nil
 	case "get":
@@ -97,7 +122,7 @@ func (a *app) cmdConfig(global globalOptions, args []string) error {
 	case "repo":
 		return a.cmdConfigRepo(rest)
 	default:
-		return fmt.Errorf("unknown config subcommand: %s", sub)
+		return fmt.Errorf("Unknown config subcommand %q. Run `gbt config` to see the supported config commands.", sub)
 	}
 }
 
@@ -113,6 +138,14 @@ func (a *app) cmdConfigRepo(args []string) error {
 		name := args[1]
 		gitURL := args[2]
 		path := strings.Join(args[3:], " ")
+		if err := a.cfg.ValidateRepo(name, gitURL, path); err != nil {
+			return err
+		}
+		if a.dryRun {
+			a.ui.Table("Repository Add Plan", []ui.Cell{{Text: "Name"}, {Text: "Git"}, {Text: "Path"}}, [][]ui.Cell{{{Text: name, Style: "info-cmd"}, {Text: gitURL, Style: "val"}, {Text: path, Style: "val"}}})
+			a.ui.Warning("Dry-run: config file not written")
+			return nil
+		}
 		a.cfg.SetRepo(name, gitURL, path)
 		if err := a.cfg.Save(); err != nil {
 			return err
@@ -124,18 +157,43 @@ func (a *app) cmdConfigRepo(args []string) error {
 		if len(args) < 2 {
 			return usageError("usage: config repo remove <name>")
 		}
-		if err := a.cfg.RemoveRepo(args[1]); err != nil {
+		name := args[1]
+		if a.dryRun {
+			a.ui.Table("Repository Remove Plan", []ui.Cell{{Text: "Name"}}, [][]ui.Cell{{{Text: name, Style: "info-cmd"}}})
+			a.ui.Warning("Dry-run: config file not written")
+			return nil
+		}
+		if err := a.cfg.RemoveRepo(name); err != nil {
 			return err
 		}
 		if err := a.cfg.Save(); err != nil {
 			return err
 		}
-		a.ui.Table("Repository Removed", []ui.Cell{{Text: "Name"}}, [][]ui.Cell{{{Text: args[1], Style: "info-cmd"}}})
+		a.ui.Table("Repository Removed", []ui.Cell{{Text: "Name"}}, [][]ui.Cell{{{Text: name, Style: "info-cmd"}}})
 		a.ui.Success("Removed repository config")
 		return nil
 	default:
-		return fmt.Errorf("unknown config repo subcommand: %s", args[0])
+		return fmt.Errorf("Unknown config repo subcommand %q.", args[0])
 	}
+}
+
+func (a *app) cmdConfigValidate() error {
+	issues := a.cfg.Validate()
+	rows := [][]ui.Cell{}
+	for _, issue := range issues {
+		style := "warning"
+		if issue.Level == "FAIL" {
+			style = "error"
+		}
+		rows = append(rows, []ui.Cell{{Text: issue.Level, Style: style}, {Text: issue.Key, Style: "info-cmd"}, {Text: issue.Message, Style: "val"}})
+	}
+	a.ui.Panel("Config Validation", a.cfg.ConfigPath)
+	if len(rows) == 0 {
+		a.ui.Success("Config looks usable")
+		return nil
+	}
+	a.ui.Table("Issues", []ui.Cell{{Text: "Level"}, {Text: "Key"}, {Text: "Message"}}, rows)
+	return fmt.Errorf("Config has %d issue(s). Fix the failing keys before relying on this setup.", len(rows))
 }
 
 func (a *app) printConfigKey(key string) error {
@@ -169,7 +227,7 @@ func (a *app) printConfigKey(key string) error {
 			}
 		}
 		if value == "" {
-			return fmt.Errorf("unknown config key: %s", key)
+			return fmt.Errorf("Unknown config key %q.", key)
 		}
 	}
 	a.ui.Table("Config Value", []ui.Cell{{Text: "Key"}, {Text: "Value"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}, {Text: value, Style: "val"}}})
@@ -185,15 +243,19 @@ func (a *app) cmdOnboard(global globalOptions, args []string) error {
 		return err
 	}
 	force := fs.Lookup("force").Value.String() == "true"
-	written, err := a.cfg.InitIfMissing(force)
-	if err != nil {
-		return err
-	}
 	a.ui.Panel("Onboarding", a.cfg.ConfigPath)
-	if written {
-		a.ui.Success("Created starter config")
+	if a.dryRun {
+		a.ui.Warning("Dry-run: config file not written")
 	} else {
-		a.ui.Warning("Using existing config")
+		written, err := a.cfg.InitIfMissing(force)
+		if err != nil {
+			return err
+		}
+		if written {
+			a.ui.Success("Created starter config")
+		} else {
+			a.ui.Warning("Using existing config")
+		}
 	}
 	a.ui.Table("Environment Defaults", []ui.Cell{{Text: "Setting"}, {Text: "Value"}}, [][]ui.Cell{
 		{{Text: "Repo", Style: "info-cmd"}, {Text: a.cfg.Defaults.Repo, Style: "val"}},
@@ -205,6 +267,7 @@ func (a *app) cmdOnboard(global globalOptions, args []string) error {
 ## Next Steps
 
 - run ` + "`gbt config show`" + `
+- validate the config with ` + "`gbt config validate`" + `
 - inspect editable keys with ` + "`gbt config keys`" + `
 - adjust any local paths with ` + "`gbt config set <key> <value>`" + `
 - run ` + "`gbt doctor`" + `

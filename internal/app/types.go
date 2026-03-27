@@ -7,7 +7,8 @@ type preset struct {
 }
 
 type globalOptions struct {
-	repo string
+	repo   string
+	dryRun bool
 }
 
 type deployMeta struct {
@@ -27,6 +28,18 @@ type gitInfo struct {
 	Commit     string
 	CommitFull string
 	Dirty      bool
+}
+
+type toolVersion struct {
+	Version   string
+	Commit    string
+	BuildDate string
+}
+
+var versionInfo = toolVersion{
+	Version:   "dev",
+	Commit:    "unknown",
+	BuildDate: "unknown",
 }
 
 var presets = map[string]preset{

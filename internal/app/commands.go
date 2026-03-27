@@ -64,6 +64,67 @@ func (a *app) cmdBranches(global globalOptions, args []string) error {
 	return a.runCommand(repo, "git", "branch", "-a")
 }
 
+func (a *app) cmdVersion(global globalOptions, args []string) error {
+	a.ui.Panel("GBT Version", "Build information for the current gbt binary")
+	a.ui.Table("Version", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, a.versionRows())
+	return nil
+}
+
+func (a *app) cmdWhich(global globalOptions, args []string) error {
+	fs, err := parseCommandFlags("which", args, func(fs *flag.FlagSet) {
+		fs.Bool("mono", false, "Show C# editor targets")
+		fs.Bool("stable", false, "Show stable slot names")
+		fs.SetOutput(a.ui.Stdout())
+	})
+	if err != nil {
+		return err
+	}
+	repo, err := a.repoPath(global.repo)
+	if err != nil {
+		return err
+	}
+	mono := fs.Lookup("mono").Value.String() == "true"
+	stable := fs.Lookup("stable").Value.String() == "true"
+	channel := "dev"
+	if stable {
+		channel = "stable"
+	}
+	guiName, consoleName := a.deployedNames(channel, mono)
+	repoCfg := a.cfg.Repos[global.repo]
+
+	a.ui.Panel("Which", "Resolved paths and commands for the current config")
+	a.ui.Table("Version", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, a.versionRows())
+	a.ui.Table("Repository", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, [][]ui.Cell{
+		{{Text: "Repo", Style: "info-cmd"}, {Text: global.repo, Style: "val"}},
+		{{Text: "Git", Style: "info-cmd"}, {Text: repoCfg.Git, Style: "val"}},
+		{{Text: "Path", Style: "info-cmd"}, {Text: repo, Style: "val"}},
+		{{Text: "SCons", Style: "info-cmd"}, {Text: a.sconsPath(), Style: "val"}},
+	})
+	a.ui.Table("Channels", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, [][]ui.Cell{
+		{{Text: "Dev branch", Style: "info-cmd"}, {Text: a.cfg.Branches.Dev, Style: "val"}},
+		{{Text: "Stable branch", Style: "info-cmd"}, {Text: a.cfg.Branches.Stable, Style: "val"}},
+		{{Text: "Selected channel", Style: "info-cmd"}, {Text: channel, Style: "val"}},
+		{{Text: "Mono", Style: "info-cmd"}, {Text: fmt.Sprintf("%t", mono), Style: "val"}},
+	})
+	a.ui.Table("Install Paths", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, [][]ui.Cell{
+		{{Text: "Build root", Style: "info-cmd"}, {Text: a.cfg.Paths.BuildRoot, Style: "val"}},
+		{{Text: "Deploy dir", Style: "info-cmd"}, {Text: a.cfg.Paths.DeployDir, Style: "val"}},
+		{{Text: "Bin dir", Style: "info-cmd"}, {Text: a.cfg.Paths.BinDir, Style: "val"}},
+		{{Text: "Templates dir", Style: "info-cmd"}, {Text: filepath.Join(os.Getenv("APPDATA"), "Godot", "export_templates"), Style: "val"}},
+	})
+	a.ui.Table("Resolved Targets", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, [][]ui.Cell{
+		{{Text: "GUI binary", Style: "deploy-cmd"}, {Text: filepath.Join(a.cfg.Paths.DeployDir, guiName), Style: "val"}},
+		{{Text: "Console binary", Style: "deploy-cmd"}, {Text: filepath.Join(a.cfg.Paths.DeployDir, consoleName), Style: "val"}},
+		{{Text: "Metadata", Style: "deploy-cmd"}, {Text: a.deployMetaPath(channel), Style: "val"}},
+	})
+	rows := [][]ui.Cell{}
+	for _, name := range sortedMapKeys(a.cliTargets(mono)) {
+		rows = append(rows, []ui.Cell{{Text: name, Style: "build-cmd"}, {Text: a.cliShimPath(name), Style: "val"}, {Text: a.cliTargets(mono)[name], Style: "val"}})
+	}
+	a.ui.Table("CLI Shims", []ui.Cell{{Text: "Command"}, {Text: "Shim"}, {Text: "Target"}}, rows)
+	return nil
+}
+
 func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
 	fs, err := parseCommandFlags("install-self", args, func(fs *flag.FlagSet) {
 		fs.String("bin-dir", "", "Override the user bin directory for this install")
@@ -78,11 +139,11 @@ func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
 	force := fs.Lookup("force").Value.String() == "true"
 	noPath := fs.Lookup("no-path").Value.String() == "true"
 	if !dirWritable(binDir) {
-		return fmt.Errorf("bin directory is not writable: %s", binDir)
+		return fmt.Errorf("The bin directory %s is not writable. Pick another path with `gbt config set paths.bin_dir <path>` or pass --bin-dir.", binDir)
 	}
 	src, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("resolve current executable: %w", err)
+		return fmt.Errorf("Could not resolve the current gbt executable: %w", err)
 	}
 	src = filepath.Clean(src)
 	targetName := progName
@@ -90,7 +151,7 @@ func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
 		targetName += ".exe"
 	}
 	dest := filepath.Join(binDir, targetName)
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
+	if err := a.mkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
 	status := "new"
@@ -119,10 +180,10 @@ func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
 	a.ui.Table("Binary Install Plan", []ui.Cell{{Text: "Source"}, {Text: "Status"}, {Text: "Destination"}}, [][]ui.Cell{{{Text: src, Style: "val"}, {Text: status, Style: style}, {Text: dest, Style: "val"}}})
 	if status == "conflict" {
 		a.ui.Warning("An existing gbt binary was left unchanged. Re-run with --force to overwrite it.")
-		return fmt.Errorf("existing binary conflicts with install target: %s", dest)
+		return fmt.Errorf("A different gbt binary already exists at %s.", dest)
 	}
 	if status == "new" || status == "overwrite" {
-		if err := copyFile(src, dest); err != nil {
+		if err := a.copyFile(src, dest); err != nil {
 			return err
 		}
 	}
@@ -144,6 +205,8 @@ func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
 	}
 	if status == "current" || status == "unchanged" {
 		a.ui.Warning("No binary copy was needed")
+	} else if a.dryRun {
+		a.ui.Success("Dry-run complete")
 	} else {
 		a.ui.Success("Installed gbt binary")
 	}
@@ -166,7 +229,7 @@ func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
 	force := fs.Lookup("force").Value.String() == "true"
 	noPath := fs.Lookup("no-path").Value.String() == "true"
 	if !dirWritable(binDir) {
-		return fmt.Errorf("bin directory is not writable: %s", binDir)
+		return fmt.Errorf("The bin directory %s is not writable. Pick another path with `gbt config set paths.bin_dir <path>` or pass --bin-dir.", binDir)
 	}
 
 	targets := a.cliTargets(mono)
@@ -176,10 +239,10 @@ func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
 			primary = v
 		}
 	}
-	if !fileExists(primary) {
-		return fmt.Errorf("deployed binary not found: %s", primary)
+	if !fileExists(primary) && !a.dryRun {
+		return fmt.Errorf("Could not find a deployed Godot binary at %s. Run `gbt deploy`, `gbt update`, or choose a different channel first.", primary)
 	}
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
+	if err := a.mkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
 
@@ -188,7 +251,7 @@ func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
 	written := 0
 	for _, name := range sortedMapKeys(targets) {
 		target := targets[name]
-		if !fileExists(target) {
+		if !fileExists(target) && !a.dryRun {
 			continue
 		}
 		shimPath := a.cliShimPathFor(binDir, name)
@@ -225,7 +288,7 @@ func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
 	a.ui.Table("CLI Shim Plan", []ui.Cell{{Text: "Command"}, {Text: "Status"}, {Text: "Shim"}, {Text: "Target"}}, rows)
 	if len(conflicts) > 0 {
 		a.ui.Warning("Conflicting shim files were left unchanged. Re-run with --force to overwrite them.")
-		return fmt.Errorf("found %d conflicting shim file(s)", len(conflicts))
+		return fmt.Errorf("Found %d conflicting shim file(s).", len(conflicts))
 	}
 	if !noPath {
 		added, err := a.ensureCLIPathDir(binDir)
@@ -245,6 +308,8 @@ func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
 	}
 	if written == 0 {
 		a.ui.Warning("No shim files needed changes")
+	} else if a.dryRun {
+		a.ui.Success("Dry-run complete")
 	} else {
 		a.ui.Success(fmt.Sprintf("Wrote %d shim file(s)", written))
 	}
@@ -263,8 +328,11 @@ func (a *app) cmdUninstallCLI(global globalOptions, args []string) error {
 	binDir := a.resolveBinDir(fs.Lookup("bin-dir").Value.String())
 	removed := []string{}
 	for _, name := range []string{"godot", "godot-dev", "godot-cs", "godot-dev-cs"} {
-		if err := os.Remove(a.cliShimPathFor(binDir, name)); err == nil {
-			removed = append(removed, name)
+		shimPath := a.cliShimPathFor(binDir, name)
+		if fileExists(shimPath) {
+			if err := a.removeFile(shimPath); err == nil {
+				removed = append(removed, name)
+			}
 		}
 	}
 	a.ui.Panel("Uninstall CLI", binDir)
@@ -310,7 +378,7 @@ func (a *app) cmdBuild(global globalOptions, args []string) error {
 	extraArgs := rest[1:]
 	p, ok := presets[presetName]
 	if !ok {
-		return fmt.Errorf("unknown preset: %s", presetName)
+		return fmt.Errorf("Unknown preset %q. Run `gbt presets` to see the supported preset names.", presetName)
 	}
 	a.ui.Panel("Build", p.Desc)
 	extra := append(collectSConsFlags(*d3d12, *vulkan, *lto, *llvm, *dev, *mono, *jobs), extraArgs...)

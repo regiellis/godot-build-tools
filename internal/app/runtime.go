@@ -17,10 +17,13 @@ import (
 func (a *app) repoPath(name string) (string, error) {
 	repo, ok := a.cfg.Repos[name]
 	if !ok {
-		return "", fmt.Errorf("unknown repo: %s", name)
+		return "", fmt.Errorf("The repo %q is not configured. Add it with `gbt config repo add %s <git> <path>` or choose a different repo with `--repo`.", name, name)
+	}
+	if strings.TrimSpace(repo.Path) == "" {
+		return "", fmt.Errorf("The repo %q does not have a local path configured. Set `repos.%s.path` first.", name, name)
 	}
 	if st, err := os.Stat(repo.Path); err != nil || !st.IsDir() {
-		return "", fmt.Errorf("repo path not found: %s", repo.Path)
+		return "", fmt.Errorf("Could not find the configured repo at %s. Update `repos.%s.path` or clone the repo there first.", repo.Path, name)
 	}
 	return repo.Path, nil
 }
@@ -40,12 +43,22 @@ func (a *app) runCommand(dir string, name string, args ...string) error {
 	if dir != "" {
 		fmt.Fprintf(a.ui.Stdout(), "    %s %s\n\n", a.ui.Styled("muted", "(in"), a.ui.Styled("path", dir+")"))
 	}
+	if a.dryRun {
+		a.ui.Warning("Dry-run: command not executed")
+		return nil
+	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Stdout = a.ui.Stdout()
 	cmd.Stderr = a.ui.Stderr()
 	cmd.Stdin = os.Stdin
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		if errorsIs(err, exec.ErrNotFound) {
+			return fmt.Errorf("Could not run %q because it was not found on PATH. Start with `gbt doctor` and install the missing toolchain or command.", name)
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *app) capture(dir string, name string, args ...string) (string, error) {
@@ -88,7 +101,7 @@ func (a *app) writeDeployMeta(channel, repoName, presetName string, info gitInfo
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(a.deployMetaPath(channel), b, 0o644)
+	return a.writeFile(a.deployMetaPath(channel), b, 0o644)
 }
 
 func (a *app) deployMetaPath(channel string) string {
@@ -146,10 +159,10 @@ func (a *app) cliTargets(preferMono bool) map[string]string {
 		"godot":     filepath.Join(a.cfg.Paths.DeployDir, stablePrimary),
 		"godot-dev": filepath.Join(a.cfg.Paths.DeployDir, devPrimary),
 	}
-	if _, err := os.Stat(filepath.Join(a.cfg.Paths.DeployDir, "godot-cs.exe")); err == nil {
+	if _, err := os.Stat(filepath.Join(a.cfg.Paths.DeployDir, "godot-cs.exe")); err == nil || preferMono {
 		targets["godot-cs"] = filepath.Join(a.cfg.Paths.DeployDir, "godot-cs.exe")
 	}
-	if _, err := os.Stat(filepath.Join(a.cfg.Paths.DeployDir, "godot-dev-cs.exe")); err == nil {
+	if _, err := os.Stat(filepath.Join(a.cfg.Paths.DeployDir, "godot-dev-cs.exe")); err == nil || preferMono {
 		targets["godot-dev-cs"] = filepath.Join(a.cfg.Paths.DeployDir, "godot-dev-cs.exe")
 	}
 	return targets
@@ -164,14 +177,14 @@ func (a *app) writeShim(name, target string) error {
 }
 
 func (a *app) writeShimAt(binDir, name, target string) error {
-	return os.WriteFile(a.cliShimPathFor(binDir, name), []byte(shimContent(target)), 0o644)
+	return a.writeFile(a.cliShimPathFor(binDir, name), []byte(shimContent(target)), 0o644)
 }
 
 func (a *app) refreshShims() {
 	targets := a.cliTargets(false)
 	for name, target := range targets {
 		if _, err := os.Stat(a.cliShimPath(name)); err == nil {
-			if _, err := os.Stat(target); err == nil {
+			if _, err := os.Stat(target); err == nil || a.dryRun {
 				_ = a.writeShim(name, target)
 			}
 		}
@@ -259,6 +272,41 @@ func (a *app) removeCLIPath() (bool, error) {
 	return a.removeCLIPathDir(a.cfg.Paths.BinDir)
 }
 
+func (a *app) copyFile(src, dst string) error {
+	if a.dryRun {
+		a.ui.Line(a.ui.Styled("muted", "Would copy ") + a.ui.Styled("path", src) + a.ui.Styled("muted", " -> ") + a.ui.Styled("path", dst))
+		return nil
+	}
+	return copyFile(src, dst)
+}
+
+func (a *app) mkdirAll(path string, perm os.FileMode) error {
+	if a.dryRun {
+		a.ui.Line(a.ui.Styled("muted", "Would create directory ") + a.ui.Styled("path", path))
+		return nil
+	}
+	return os.MkdirAll(path, perm)
+}
+
+func (a *app) writeFile(path string, data []byte, perm os.FileMode) error {
+	if a.dryRun {
+		a.ui.Line(a.ui.Styled("muted", "Would write ") + a.ui.Styled("path", path))
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, perm)
+}
+
+func (a *app) removeFile(path string) error {
+	if a.dryRun {
+		a.ui.Line(a.ui.Styled("muted", "Would remove ") + a.ui.Styled("path", path))
+		return nil
+	}
+	return os.Remove(path)
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -337,4 +385,8 @@ func sortedMapKeys[T any](m map[string]T) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func errorsIs(err, target error) bool {
+	return err != nil && target != nil && strings.Contains(err.Error(), target.Error())
 }

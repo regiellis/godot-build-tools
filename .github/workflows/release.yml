@@ -1,0 +1,104 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+            archive: zip
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          OUTDIR="dist/gbt_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p "$OUTDIR"
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="-X 'github.com/playlogic/godot-build/internal/app.versionInfo.Version=$VERSION' -X 'github.com/playlogic/godot-build/internal/app.versionInfo.Commit=${GITHUB_SHA}' -X 'github.com/playlogic/godot-build/internal/app.versionInfo.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
+            -o "$OUTDIR/gbt${{ matrix.ext }}" ./cmd/godot-build
+
+      - name: Archive release asset (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { 'dev' }
+          $name = "gbt_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip" -Force
+
+      - name: Archive release asset (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          NAME="gbt_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          tar -C dist -czf "dist/${NAME}.tar.gz" "$NAME"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,6 +41,12 @@ type Defaults struct {
 type Repo struct {
 	Git  string `toml:"git"`
 	Path string `toml:"path"`
+}
+
+type ValidationIssue struct {
+	Level   string
+	Key     string
+	Message string
 }
 
 func Load() (*Config, error) {
@@ -161,6 +168,15 @@ func (c *Config) EncodeTOML() string {
 	return b.String()
 }
 
+func (c *Config) Clone() *Config {
+	clone := *c
+	clone.Repos = map[string]Repo{}
+	for name, repo := range c.Repos {
+		clone.Repos[name] = repo
+	}
+	return &clone
+}
+
 func (c *Config) Set(key, value string) error {
 	switch {
 	case key == "paths.bin_dir":
@@ -260,6 +276,109 @@ func (c *Config) RemoveRepo(name string) error {
 	}
 	delete(c.Repos, name)
 	return nil
+}
+
+func (c *Config) Validate() []ValidationIssue {
+	issues := []ValidationIssue{}
+	add := func(level, key, message string) {
+		issues = append(issues, ValidationIssue{Level: level, Key: key, Message: message})
+	}
+
+	if strings.TrimSpace(c.Paths.BinDir) == "" {
+		add("FAIL", "paths.bin_dir", "Set a personal bin directory so GBT knows where to install gbt.exe and the command shims.")
+	}
+	if strings.TrimSpace(c.Paths.BuildRoot) == "" {
+		add("FAIL", "paths.build_root", "Set the root folder where your Godot source checkouts live.")
+	}
+	if strings.TrimSpace(c.Paths.DeployDir) == "" {
+		add("FAIL", "paths.deploy_dir", "Set the deploy directory where built Godot binaries should be installed.")
+	}
+	if strings.TrimSpace(c.Branches.Dev) == "" {
+		add("FAIL", "branches.dev", "Set the branch name GBT should use for the dev channel.")
+	}
+	if strings.TrimSpace(c.Branches.Stable) == "" {
+		add("FAIL", "branches.stable", "Set the branch name GBT should use for the stable channel.")
+	}
+	if strings.TrimSpace(c.Defaults.Repo) == "" {
+		add("FAIL", "defaults.repo", "Choose a default repo name so commands know which checkout to use when --repo is omitted.")
+	}
+	if c.Defaults.Jobs <= 0 {
+		add("FAIL", "defaults.jobs", "Set defaults.jobs to a number greater than 0.")
+	}
+	if len(c.Repos) == 0 {
+		add("FAIL", "repos", "Add at least one repository entry. The official Godot repo is the default starter entry.")
+	}
+	if strings.TrimSpace(c.Defaults.Repo) != "" {
+		if _, ok := c.Repos[c.Defaults.Repo]; !ok {
+			add("FAIL", "defaults.repo", fmt.Sprintf("The default repo %q does not exist in [repos]. Add it with `gbt config repo add %s <git> <path>` or change defaults.repo.", c.Defaults.Repo, c.Defaults.Repo))
+		}
+	}
+	for _, name := range sortedRepoNames(c.Repos) {
+		repo := c.Repos[name]
+		if strings.TrimSpace(repo.Git) == "" {
+			add("FAIL", "repos."+name+".git", fmt.Sprintf("Repo %q is missing its git remote URL.", name))
+		}
+		if strings.TrimSpace(repo.Path) == "" {
+			add("FAIL", "repos."+name+".path", fmt.Sprintf("Repo %q is missing its local checkout path.", name))
+		}
+	}
+	return issues
+}
+
+func (c *Config) ValidateSet(key, value string) error {
+	trial := c.Clone()
+	if err := trial.Set(key, value); err != nil {
+		return err
+	}
+	return trial.validateChangedKey(key)
+}
+
+func (c *Config) ValidateUnset(key string) error {
+	trial := c.Clone()
+	if err := trial.Unset(key); err != nil {
+		return err
+	}
+	return trial.validateChangedKey(key)
+}
+
+func (c *Config) ValidateRepo(name, gitURL, path string) error {
+	trial := c.Clone()
+	trial.SetRepo(name, gitURL, path)
+	for _, issue := range trial.Validate() {
+		if issue.Level != "FAIL" {
+			continue
+		}
+		if issue.Key == "repos."+name+".git" || issue.Key == "repos."+name+".path" {
+			return errors.New(issue.Message)
+		}
+		if issue.Key == "defaults.repo" && trial.Defaults.Repo == name {
+			return errors.New(issue.Message)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateChangedKey(key string) error {
+	for _, issue := range c.Validate() {
+		if issue.Level != "FAIL" {
+			continue
+		}
+		if issue.Key == key || strings.HasPrefix(key, "repos.") && strings.HasPrefix(issue.Key, repoKeyPrefix(key)) {
+			return errors.New(issue.Message)
+		}
+		if key == "defaults.repo" && issue.Key == "defaults.repo" {
+			return errors.New(issue.Message)
+		}
+	}
+	return nil
+}
+
+func repoKeyPrefix(key string) string {
+	parts := strings.Split(key, ".")
+	if len(parts) < 2 {
+		return key
+	}
+	return parts[0] + "." + parts[1]
 }
 
 func KnownKeys() []string {

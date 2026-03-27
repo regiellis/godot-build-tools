@@ -71,6 +71,14 @@ func (a *app) cmdDoctor(global globalOptions, args []string) error {
 		}
 	}
 
+	for _, issue := range a.cfg.Validate() {
+		status := "WARN"
+		if issue.Level == "FAIL" {
+			status = "FAIL"
+		}
+		add(status, "Config: "+issue.Key, issue.Message)
+	}
+
 	required(dirExists(a.cfg.Paths.BuildRoot), "Builds Dir", a.cfg.Paths.BuildRoot)
 	required(dirExists(repo), "Repo Dir", repo)
 	required(pathExists(filepathJoin(repo, ".git")), "Git Repo", filepathJoin(repo, ".git"))
@@ -130,7 +138,14 @@ func (a *app) cmdDoctor(global globalOptions, args []string) error {
 	summary := fmt.Sprintf("Summary: %d ok, %d warnings, %d failures", okCount, warnCount, failCount)
 	if failCount > 0 {
 		a.ui.Error(summary)
-		return fmt.Errorf("%s", summary)
+		a.ui.Line("")
+		a.ui.Line(a.ui.Styled("muted", "Start with `gbt config validate` for config issues, then compare the missing tools against the official Godot build docs."))
+		return fmt.Errorf("Doctor found blocking issues. Start with the failing rows above and fix those first.")
+	}
+	if warnCount > 0 {
+		a.ui.Warning(summary)
+		a.ui.Line(a.ui.Styled("muted", "Warnings are not always blockers, but they are usually where to look first if a build or deploy behaves strangely."))
+		return nil
 	}
 	a.ui.Success(summary)
 	return nil
