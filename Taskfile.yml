@@ -1,0 +1,52 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  tidy:
+    desc: Sync Go module dependencies
+    cmds:
+      - go mod tidy
+
+  fmt:
+    desc: Format Go source files
+    cmds:
+      - gofmt -w ./cmd ./internal
+
+  test:
+    desc: Run all tests
+    deps:
+      - fmt
+    cmds:
+      - go test ./...
+
+  build:
+    desc: Build the CLI binary
+    deps:
+      - fmt
+    cmds:
+      - go build ./cmd/godot-build
+
+  run:
+    desc: Run the CLI scaffold
+    deps:
+      - fmt
+    cmds:
+      - go run ./cmd/godot-build
+
+  config:
+    desc: Print the resolved config
+    deps:
+      - fmt
+    cmds:
+      - go run ./cmd/godot-build --print-config
+
+  check:
+    desc: Full local verification pass
+    deps:
+      - tidy
+      - test
+      - build
