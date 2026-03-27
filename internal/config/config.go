@@ -53,6 +53,25 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("resolve user home: %w", err)
 	}
 
+	cfg := defaultConfig(configPath, home)
+
+	if !fileExists(configPath) {
+		if _, err := cfg.InitIfMissing(false); err != nil {
+			return nil, err
+		}
+		cfg.Created = true
+	}
+
+	var userCfg Config
+	if _, err := toml.DecodeFile(configPath, &userCfg); err != nil {
+		return nil, fmt.Errorf("decode config file: %w", err)
+	}
+	mergeConfig(cfg, &userCfg)
+
+	return cfg, nil
+}
+
+func defaultConfig(configPath, home string) *Config {
 	buildRoot := defaultBuildRoot(home)
 	deployDir := filepath.Join(home, "Engines", "Godot", "current")
 	binDir := filepath.Join(home, "bin")
@@ -76,38 +95,14 @@ func Load() (*Config, error) {
 			Repo: "godot",
 			Jobs: jobs,
 		},
-		Repos: map[string]Repo{},
+		Repos: map[string]Repo{
+			"godot": {
+				Git:  "https://github.com/godotengine/godot.git",
+				Path: filepath.Join(buildRoot, "godot"),
+			},
+		},
 	}
-
-	if runtime.GOOS == "windows" {
-		cfg.Paths.BuildRoot = `D:\Builds`
-		cfg.Paths.DeployDir = `D:\Engines\Godot\current`
-		cfg.Paths.BinDir = filepath.Join(home, "bin")
-	}
-
-	cfg.Repos["godot"] = Repo{
-		Git:  "https://github.com/godotengine/godot.git",
-		Path: filepath.Join(cfg.Paths.BuildRoot, "godot"),
-	}
-	cfg.Repos["godot-nv"] = Repo{
-		Git:  "https://github.com/NVIDIA-Omniverse/godot.git",
-		Path: filepath.Join(cfg.Paths.BuildRoot, "godot-nv"),
-	}
-
-	if !fileExists(configPath) {
-		if _, err := cfg.InitIfMissing(false); err != nil {
-			return nil, err
-		}
-		cfg.Created = true
-	}
-
-	var userCfg Config
-	if _, err := toml.DecodeFile(configPath, &userCfg); err != nil {
-		return nil, fmt.Errorf("decode config file: %w", err)
-	}
-	mergeConfig(cfg, &userCfg)
-
-	return cfg, nil
+	return cfg
 }
 
 func defaultBuildRoot(home string) string {
@@ -209,6 +204,76 @@ func (c *Config) Set(key, value string) error {
 		return fmt.Errorf("unknown config key: %s", key)
 	}
 	return nil
+}
+
+func (c *Config) Unset(key string) error {
+	switch {
+	case key == "paths.bin_dir":
+		c.Paths.BinDir = ""
+	case key == "paths.build_root":
+		c.Paths.BuildRoot = ""
+	case key == "paths.deploy_dir":
+		c.Paths.DeployDir = ""
+	case key == "branches.dev":
+		c.Branches.Dev = ""
+	case key == "branches.stable":
+		c.Branches.Stable = ""
+	case key == "defaults.repo":
+		c.Defaults.Repo = ""
+	case key == "defaults.jobs":
+		c.Defaults.Jobs = 0
+	case strings.HasPrefix(key, "repos."):
+		parts := strings.Split(key, ".")
+		if len(parts) != 3 {
+			return fmt.Errorf("repo key must look like repos.<name>.git or repos.<name>.path")
+		}
+		name, field := parts[1], parts[2]
+		repo, ok := c.Repos[name]
+		if !ok {
+			return fmt.Errorf("unknown repo: %s", name)
+		}
+		switch field {
+		case "git":
+			repo.Git = ""
+		case "path":
+			repo.Path = ""
+		default:
+			return fmt.Errorf("unknown repo field: %s", field)
+		}
+		c.Repos[name] = repo
+	default:
+		return fmt.Errorf("unknown config key: %s", key)
+	}
+	return nil
+}
+
+func (c *Config) SetRepo(name, gitURL, path string) {
+	if c.Repos == nil {
+		c.Repos = map[string]Repo{}
+	}
+	c.Repos[name] = Repo{Git: gitURL, Path: path}
+}
+
+func (c *Config) RemoveRepo(name string) error {
+	if _, ok := c.Repos[name]; !ok {
+		return fmt.Errorf("unknown repo: %s", name)
+	}
+	delete(c.Repos, name)
+	return nil
+}
+
+func KnownKeys() []string {
+	return []string{
+		"paths.bin_dir",
+		"paths.build_root",
+		"paths.deploy_dir",
+		"branches.dev",
+		"branches.stable",
+		"defaults.repo",
+		"defaults.jobs",
+		"repos.<name>.git",
+		"repos.<name>.path",
+	}
 }
 
 func (c *Config) DebugString() string {

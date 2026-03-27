@@ -1,6 +1,10 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/playlogic/godot-build/internal/ui"
+)
 
 func (a *app) probe(command string, args ...string) (bool, string) {
 	out, err := a.capture("", command, args...)
@@ -77,6 +81,7 @@ func (a *app) cmdDoctor(global globalOptions, args []string) error {
 	required(ok, "Git CLI", detail)
 	optional(dirExists(a.cfg.Paths.DeployDir), "Deploy Dir", a.cfg.Paths.DeployDir)
 	optional(dirExists(a.cfg.Paths.BinDir), "CLI Bin Dir", a.cfg.Paths.BinDir)
+	optional(dirWritable(a.cfg.Paths.BinDir), "CLI Bin Writable", a.cfg.Paths.BinDir)
 	optional(pathContains(a.readUserPath(), a.cfg.Paths.BinDir), "CLI Bin On User PATH", a.cfg.Paths.BinDir)
 	for _, name := range sortedMapKeys(a.cliTargets(false)) {
 		target := a.cliTargets(false)[name]
@@ -103,6 +108,7 @@ func (a *app) cmdDoctor(global globalOptions, args []string) error {
 		optional(len(exes) > 0, "Built EXEs", fmt.Sprintf("%d found in %s", len(exes), binDir))
 	}
 	okCount, warnCount, failCount := 0, 0, 0
+	tableRows := make([][]ui.Cell, 0, len(rows))
 	for _, row := range rows {
 		switch row.status {
 		case "OK":
@@ -112,12 +118,20 @@ func (a *app) cmdDoctor(global globalOptions, args []string) error {
 		case "FAIL":
 			failCount++
 		}
-		a.ui.Line(fmt.Sprintf("%s | %s | %s", row.status, row.check, row.detail))
+		tableRows = append(tableRows, []ui.Cell{
+			{Text: row.status, Style: map[string]string{"OK": "success", "WARN": "warning", "FAIL": "error"}[row.status]},
+			{Text: row.check, Style: "key"},
+			{Text: row.detail, Style: "val"},
+		})
 	}
-	a.ui.Line("")
+
+	a.ui.Panel("Doctor", global.repo+"\n"+repo+"\nChecks what GBT expects locally.")
+	a.ui.Table("Environment Checks", []ui.Cell{{Text: "Status"}, {Text: "Check"}, {Text: "Detail"}}, tableRows)
+	summary := fmt.Sprintf("Summary: %d ok, %d warnings, %d failures", okCount, warnCount, failCount)
 	if failCount > 0 {
-		return fmt.Errorf("Summary: %d ok, %d warnings, %d failures", okCount, warnCount, failCount)
+		a.ui.Error(summary)
+		return fmt.Errorf("%s", summary)
 	}
-	a.ui.Success(fmt.Sprintf("Summary: %d ok, %d warnings, 0 failures", okCount, warnCount))
+	a.ui.Success(summary)
 	return nil
 }

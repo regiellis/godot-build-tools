@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/playlogic/godot-build/internal/ui"
 )
 
 func (a *app) detectTemplateVersion(repo string, override string) string {
@@ -51,6 +53,7 @@ func (a *app) deployTemplates(repo string, versionOverride string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
+	rows := [][]ui.Cell{}
 	copies := 0
 	for _, src := range files {
 		name := filepath.Base(src)
@@ -70,20 +73,26 @@ func (a *app) deployTemplates(repo string, versionOverride string) error {
 		if err := copyFile(src, filepath.Join(destDir, destName)); err != nil {
 			return err
 		}
+		rows = append(rows, []ui.Cell{{Text: name, Style: "val"}, {Text: destName, Style: "val"}})
 		copies++
 	}
+	a.ui.Panel("Deploy Templates", filepath.Base(repo)+"\nVersion: "+version)
+	a.ui.Table("Templates", []ui.Cell{{Text: "Source"}, {Text: "Destination"}}, rows)
 	a.ui.Success(fmt.Sprintf("Template deploy complete. %d files -> %s", copies, destDir))
 	return nil
 }
 
 func (a *app) autoBuildTemplates(repo string, d3d12, vulkan bool, lto string, llvm bool, jobs int) error {
+	a.ui.Section("Building Export Templates")
 	extra := collectTemplateFlags(d3d12, vulkan, lto, llvm, jobs)
 	for _, name := range presets["templates-all"].Batch {
 		p := presets[name]
+		a.ui.Line(a.ui.Styled("preset", name) + " " + a.ui.Styled("muted", p.Desc))
 		if err := a.runSCons(repo, p.Args, extra); err != nil {
 			return err
 		}
 	}
+	a.ui.Section("Installing Export Templates")
 	return a.deployTemplates(repo, "")
 }
 
@@ -96,6 +105,7 @@ func (a *app) deployEditor(repoPath, repoName, presetName string, mono bool, cha
 	guiName, consoleName := a.deployedNames(channel, mono)
 	info := a.gitInfo(repoPath)
 	deployed := []string{}
+	rows := [][]ui.Cell{}
 	found := 0
 	for _, e := range entries {
 		if e.IsDir() {
@@ -120,6 +130,7 @@ func (a *app) deployEditor(repoPath, repoName, presetName string, mono bool, cha
 			return err
 		}
 		deployed = append(deployed, dest)
+		rows = append(rows, []ui.Cell{{Text: name, Style: "val"}, {Text: dest, Style: "val"}})
 	}
 	if found == 0 {
 		return fmt.Errorf("no editor binaries found in %s", binDir)
@@ -128,6 +139,8 @@ func (a *app) deployEditor(repoPath, repoName, presetName string, mono bool, cha
 		return err
 	}
 	a.refreshShims()
-	a.ui.Success(fmt.Sprintf("Deploy complete. Run %s to launch (%s @ %s)", a.launchCommand(channel, mono), info.Branch, info.Commit))
+	a.ui.Panel("Deploy", fmt.Sprintf("%s @ %s\nChannel: %s", info.Branch, info.Commit, channel))
+	a.ui.Table("Editor Binaries", []ui.Cell{{Text: "Source"}, {Text: "Destination"}}, rows)
+	a.ui.Success(fmt.Sprintf("Deploy complete. Run %s to launch", a.launchCommand(channel, mono)))
 	return nil
 }

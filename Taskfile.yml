@@ -14,8 +14,7 @@ tasks:
   fmt:
     desc: Format Go source files
     cmds:
-      - Get-ChildItem internal\app\*.go | ForEach-Object { gofmt -w $_.FullName }
-      - gofmt -w internal\ui\ui.go internal\config\config.go internal\config\config_test.go cmd\godot-build\main.go
+      - gofmt -w ./cmd/godot-build ./internal/app ./internal/config ./internal/ui
 
   test:
     desc: Run all tests
@@ -29,7 +28,7 @@ tasks:
     deps:
       - fmt
     cmds:
-      - go build ./cmd/godot-build
+      - go build -o gbt.exe ./cmd/godot-build
 
   run:
     desc: Run the CLI scaffold

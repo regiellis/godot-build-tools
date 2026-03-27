@@ -26,4 +26,4 @@ jobs:
         run: go test ./...
 
       - name: Build
-        run: go build ./cmd/godot-build
+        run: go build -o gbt${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/godot-build

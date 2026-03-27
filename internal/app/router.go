@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/playlogic/godot-build/internal/ui"
 )
+
+const progName = "gbt"
 
 func (a *app) run(args []string) int {
 	global, rest, printConfig, code := a.parseGlobal(args)
@@ -36,6 +40,8 @@ func (a *app) run(args []string) int {
 		err = a.cmdBranches(global, rest)
 	case "doctor":
 		err = a.cmdDoctor(global, rest)
+	case "install-self":
+		err = a.cmdInstallSelf(global, rest)
 	case "install-cli":
 		err = a.cmdInstallCLI(global, rest)
 	case "uninstall-cli":
@@ -105,31 +111,65 @@ func (a *app) parseGlobal(args []string) (globalOptions, []string, bool, int) {
 }
 
 func (a *app) printMainHelp() {
-	a.ui.Title("godot-build")
-	a.ui.Subtitle("Go Godot build helper")
-	a.ui.Markdown(`
-## Commands
+	a.ui.Panel("GBT - Godot Build Tools", "Current repo: "+a.ui.Styled("key", a.cfg.Defaults.Repo))
+	a.ui.Line(fmt.Sprintf("Usage: %s %s",
+		a.ui.Styled("cmd", progName),
+		a.ui.Styled("muted", "<command> [options]")))
+	a.ui.Line("")
 
-- ` + "`onboard`" + `
-- ` + "`config`" + `
-- ` + "`pull`" + `
-- ` + "`checkout <branch>`" + `
-- ` + "`status`" + `
-- ` + "`branches`" + `
-- ` + "`doctor`" + `
-- ` + "`install-cli`" + `
-- ` + "`uninstall-cli`" + `
-- ` + "`build <preset>`" + `
-- ` + "`build-deploy <preset>`" + `
-- ` + "`update [preset]`" + `
-- ` + "`custom <scons args...>`" + `
-- ` + "`presets`" + `
-- ` + "`clean`" + `
-- ` + "`list`" + `
-- ` + "`deploy`" + `
-- ` + "`deploy-templates`" + `
-- ` + "`info`" + `
-`)
+	a.ui.Table("Global Options", nil, [][]ui.Cell{
+		{{Text: "--repo, -r", Style: "key"}, {Text: fmt.Sprintf("Repository to use (default: %s)", a.cfg.Defaults.Repo), Style: "val"}},
+		{{Text: "-h, --help", Style: "key"}, {Text: "Show this help message", Style: "val"}},
+		{{Text: "--print-config", Style: "key"}, {Text: "Print the resolved config and exit", Style: "val"}},
+	})
+
+	groups := []struct {
+		name  string
+		style string
+		rows  [][]ui.Cell
+	}{
+		{name: "Git", style: "git-cmd", rows: [][]ui.Cell{
+			{{Text: "pull", Style: "git-cmd"}, {Text: "Pull latest from origin (fast-forward only)", Style: "val"}},
+			{{Text: "checkout", Style: "git-cmd"}, {Text: "Checkout a branch", Style: "val"}},
+			{{Text: "status", Style: "git-cmd"}, {Text: "Show git status and recent commits", Style: "val"}},
+			{{Text: "branches", Style: "git-cmd"}, {Text: "List all branches (local + remote)", Style: "val"}},
+		}},
+		{name: "Build", style: "build-cmd", rows: [][]ui.Cell{
+			{{Text: "doctor", Style: "build-cmd"}, {Text: "Check environment and toolchain prerequisites", Style: "val"}},
+			{{Text: "install-self", Style: "build-cmd"}, {Text: "Install the gbt binary into your personal bin", Style: "val"}},
+			{{Text: "install-cli", Style: "build-cmd"}, {Text: "Install godot/godot-dev launch shims", Style: "val"}},
+			{{Text: "uninstall-cli", Style: "build-cmd"}, {Text: "Remove installed launch shims", Style: "val"}},
+			{{Text: "build", Style: "build-cmd"}, {Text: "Run a build preset", Style: "val"}},
+			{{Text: "build-deploy", Style: "build-cmd"}, {Text: "Build preset, deploy it, and install templates", Style: "val"}},
+			{{Text: "update", Style: "build-cmd"}, {Text: "Pull + build + deploy + install templates", Style: "val"}},
+			{{Text: "custom", Style: "build-cmd"}, {Text: "Run scons with custom arguments", Style: "val"}},
+			{{Text: "clean", Style: "build-cmd"}, {Text: "Clean build artifacts", Style: "val"}},
+		}},
+		{name: "Deploy", style: "deploy-cmd", rows: [][]ui.Cell{
+			{{Text: "deploy", Style: "deploy-cmd"}, {Text: "Deploy built editor as godot-dev or godot", Style: "val"}},
+			{{Text: "deploy-templates", Style: "deploy-cmd"}, {Text: "Deploy export templates to Godot appdata", Style: "val"}},
+		}},
+		{name: "Info", style: "info-cmd", rows: [][]ui.Cell{
+			{{Text: "onboard", Style: "info-cmd"}, {Text: "Create a starter config and show next steps", Style: "val"}},
+			{{Text: "config", Style: "info-cmd"}, {Text: "Show or modify saved user config", Style: "val"}},
+			{{Text: "presets", Style: "info-cmd"}, {Text: "List available build presets", Style: "val"}},
+			{{Text: "list", Style: "info-cmd"}, {Text: "Show built binaries in bin/", Style: "val"}},
+			{{Text: "info", Style: "info-cmd"}, {Text: "Show deployed build details", Style: "val"}},
+		}},
+	}
+	for _, group := range groups {
+		a.ui.Table(group.name, nil, group.rows)
+	}
+
+	a.ui.Table("Examples", nil, [][]ui.Cell{
+		{{Text: progName + " onboard", Style: "cmd"}, {Text: "Create the starter config", Style: "muted"}},
+		{{Text: progName + " install-self", Style: "cmd"}, {Text: "Install gbt.exe into your personal bin", Style: "muted"}},
+		{{Text: progName + " doctor", Style: "cmd"}, {Text: "Check local prerequisites", Style: "muted"}},
+		{{Text: progName + " update", Style: "cmd"}, {Text: "Build and deploy the dev channel", Style: "muted"}},
+		{{Text: progName + " update --stable", Style: "cmd"}, {Text: "Build and deploy the stable channel", Style: "muted"}},
+		{{Text: progName + " update --stable --mono", Style: "cmd"}, {Text: "Build and deploy stable C# editor and templates", Style: "muted"}},
+		{{Text: progName + " --repo godot build editor", Style: "cmd"}, {Text: "Build from the configured official repo", Style: "muted"}},
+	})
 }
 
 func parseCommandFlags(name string, args []string, configure func(*flag.FlagSet)) (*flag.FlagSet, error) {

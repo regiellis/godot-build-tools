@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,9 +36,9 @@ func (a *app) sconsPath() string {
 }
 
 func (a *app) runCommand(dir string, name string, args ...string) error {
-	fmt.Fprintf(a.ui.Stdout(), ">>> %s %s\n", name, strings.Join(args, " "))
+	fmt.Fprintf(a.ui.Stdout(), "%s %s\n", a.ui.Styled("cmd", ">>>"), a.ui.Styled("cmd", name+" "+strings.Join(args, " ")))
 	if dir != "" {
-		fmt.Fprintf(a.ui.Stdout(), "    (in %s)\n\n", dir)
+		fmt.Fprintf(a.ui.Stdout(), "    %s %s\n\n", a.ui.Styled("muted", "(in"), a.ui.Styled("path", dir+")"))
 	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
@@ -123,8 +124,19 @@ func (a *app) launchCommand(channel string, mono bool) string {
 	return "godot-dev"
 }
 
+func (a *app) resolveBinDir(override string) string {
+	if strings.TrimSpace(override) != "" {
+		return filepath.Clean(strings.TrimSpace(override))
+	}
+	return a.cfg.Paths.BinDir
+}
+
 func (a *app) cliShimPath(name string) string {
-	return filepath.Join(a.cfg.Paths.BinDir, name+".cmd")
+	return a.cliShimPathFor(a.cfg.Paths.BinDir, name)
+}
+
+func (a *app) cliShimPathFor(binDir, name string) string {
+	return filepath.Join(binDir, name+".cmd")
 }
 
 func (a *app) cliTargets(preferMono bool) map[string]string {
@@ -143,9 +155,16 @@ func (a *app) cliTargets(preferMono bool) map[string]string {
 	return targets
 }
 
+func shimContent(target string) string {
+	return fmt.Sprintf("@echo off\r\n\"%s\" %%*\r\n", target)
+}
+
 func (a *app) writeShim(name, target string) error {
-	content := fmt.Sprintf("@echo off\r\n\"%s\" %%*\r\n", target)
-	return os.WriteFile(a.cliShimPath(name), []byte(content), 0o644)
+	return a.writeShimAt(a.cfg.Paths.BinDir, name, target)
+}
+
+func (a *app) writeShimAt(binDir, name, target string) error {
+	return os.WriteFile(a.cliShimPathFor(binDir, name), []byte(shimContent(target)), 0o644)
 }
 
 func (a *app) refreshShims() {
@@ -195,9 +214,9 @@ func pathContains(pathValue, wanted string) bool {
 	return false
 }
 
-func (a *app) ensureCLIPath() (bool, error) {
+func (a *app) ensureCLIPathDir(binDir string) (bool, error) {
 	current := a.readUserPath()
-	if pathContains(current, a.cfg.Paths.BinDir) {
+	if pathContains(current, binDir) {
 		return false, nil
 	}
 	parts := []string{}
@@ -206,11 +225,15 @@ func (a *app) ensureCLIPath() (bool, error) {
 			parts = append(parts, p)
 		}
 	}
-	parts = append(parts, a.cfg.Paths.BinDir)
+	parts = append(parts, binDir)
 	return true, a.writeUserPath(strings.Join(parts, ";"))
 }
 
-func (a *app) removeCLIPath() (bool, error) {
+func (a *app) ensureCLIPath() (bool, error) {
+	return a.ensureCLIPathDir(a.cfg.Paths.BinDir)
+}
+
+func (a *app) removeCLIPathDir(binDir string) (bool, error) {
 	current := a.readUserPath()
 	if current == "" {
 		return false, nil
@@ -218,7 +241,7 @@ func (a *app) removeCLIPath() (bool, error) {
 	kept := []string{}
 	removed := false
 	for _, p := range strings.Split(current, ";") {
-		if pathContains(p, a.cfg.Paths.BinDir) {
+		if pathContains(p, binDir) {
 			removed = true
 			continue
 		}
@@ -230,6 +253,10 @@ func (a *app) removeCLIPath() (bool, error) {
 		return false, nil
 	}
 	return true, a.writeUserPath(strings.Join(kept, ";"))
+}
+
+func (a *app) removeCLIPath() (bool, error) {
+	return a.removeCLIPathDir(a.cfg.Paths.BinDir)
 }
 
 func copyFile(src, dst string) error {
@@ -252,6 +279,22 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+func samePath(aPath, bPath string) bool {
+	return filepath.Clean(aPath) == filepath.Clean(bPath)
+}
+
+func filesEqual(aPath, bPath string) (bool, error) {
+	aData, err := os.ReadFile(aPath)
+	if err != nil {
+		return false, err
+	}
+	bData, err := os.ReadFile(bPath)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(aData, bData), nil
+}
+
 func dirExists(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.IsDir()
@@ -265,6 +308,26 @@ func fileExists(path string) bool {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func dirWritable(path string) bool {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return false
+	}
+	tmp := filepath.Join(path, ".godot-build-write-test")
+	if err := os.WriteFile(tmp, []byte("ok"), 0o644); err != nil {
+		return false
+	}
+	_ = os.Remove(tmp)
+	return true
+}
+
+func readTextFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func sortedMapKeys[T any](m map[string]T) []string {
