@@ -60,6 +60,10 @@ func (a *app) run(args []string) int {
 		err = a.cmdDeployTemplates(global, rest)
 	case "info":
 		err = a.cmdInfo(global, rest)
+	case "config":
+		err = a.cmdConfig(global, rest)
+	case "onboard":
+		err = a.cmdOnboard(global, rest)
 	case "help", "--help", "-h":
 		a.printMainHelp()
 		return 0
@@ -106,6 +110,8 @@ func (a *app) printMainHelp() {
 	a.ui.Markdown(`
 ## Commands
 
+- ` + "`onboard`" + `
+- ` + "`config`" + `
 - ` + "`pull`" + `
 - ` + "`checkout <branch>`" + `
 - ` + "`status`" + `

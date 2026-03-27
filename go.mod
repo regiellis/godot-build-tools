@@ -5,6 +5,7 @@ go 1.25.8
 require (
 	charm.land/glamour/v2 v2.0.0
 	charm.land/lipgloss/v2 v2.0.0
+	github.com/BurntSushi/toml v1.6.0
 )
 
 require (

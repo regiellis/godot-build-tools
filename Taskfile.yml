@@ -14,7 +14,8 @@ tasks:
   fmt:
     desc: Format Go source files
     cmds:
-      - gofmt -w ./cmd ./internal
+      - Get-ChildItem internal\app\*.go | ForEach-Object { gofmt -w $_.FullName }
+      - gofmt -w internal\ui\ui.go internal\config\config.go internal\config\config_test.go cmd\godot-build\main.go
 
   test:
     desc: Run all tests
@@ -42,7 +43,14 @@ tasks:
     deps:
       - fmt
     cmds:
-      - go run ./cmd/godot-build --print-config
+      - go run ./cmd/godot-build config show
+
+  onboard:
+    desc: Create or inspect the starter user config
+    deps:
+      - fmt
+    cmds:
+      - go run ./cmd/godot-build onboard
 
   check:
     desc: Full local verification pass
