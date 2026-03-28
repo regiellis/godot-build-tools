@@ -263,10 +263,3 @@ func (r *Renderer) Table(title string, headers []Cell, rows [][]Cell) {
 	}
 	fmt.Fprintln(r.stdout)
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

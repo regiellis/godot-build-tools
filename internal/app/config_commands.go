@@ -198,6 +198,7 @@ func (a *app) cmdConfigValidate() error {
 
 func (a *app) printConfigKey(key string) error {
 	var value string
+	found := true
 	switch key {
 	case "paths.bin_dir":
 		value = a.cfg.Paths.BinDir
@@ -214,21 +215,27 @@ func (a *app) printConfigKey(key string) error {
 	case "defaults.jobs":
 		value = fmt.Sprintf("%d", a.cfg.Defaults.Jobs)
 	default:
+		found = false
 		if len(key) > 6 && key[:6] == "repos." {
 			for name, repo := range a.cfg.Repos {
 				if key == "repos."+name+".git" {
 					value = repo.Git
+					found = true
 					break
 				}
 				if key == "repos."+name+".path" {
 					value = repo.Path
+					found = true
 					break
 				}
 			}
 		}
-		if value == "" {
-			return fmt.Errorf("Unknown config key %q.", key)
-		}
+	}
+	if !found {
+		return fmt.Errorf("Unknown config key %q.", key)
+	}
+	if value == "" {
+		value = "(empty)"
 	}
 	a.ui.Table("Config Value", []ui.Cell{{Text: "Key"}, {Text: "Value"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}, {Text: value, Style: "val"}}})
 	return nil

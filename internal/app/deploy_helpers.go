@@ -142,7 +142,9 @@ func (a *app) deployEditor(repoPath, repoName, presetName string, mono bool, cha
 	if err := a.writeDeployMeta(channel, repoName, presetName, info, deployed); err != nil {
 		return err
 	}
-	a.refreshShims()
+	if err := a.refreshShims(); err != nil {
+		return err
+	}
 	a.ui.Panel("Deploy", fmt.Sprintf("%s @ %s\nChannel: %s", info.Branch, info.Commit, channel))
 	a.ui.Table("Editor Binaries", []ui.Cell{{Text: "Source"}, {Text: "Destination"}}, rows)
 	if a.dryRun {

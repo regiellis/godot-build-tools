@@ -5,14 +5,12 @@
 [![Godot Version](https://img.shields.io/badge/godot-4.6%20%7C%20dev-blue)](https://godotengine.org/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)](LICENSE)
 
-
-Cross-platform Godot build helper CLI.
+Windows-first Godot build helper CLI, with cross-platform intent.
 
 I built this project as the Go rewrite of my personal `godot_build.py` workflow. The goal is to keep the same practical build, deploy, export-template, doctor, and CLI-shim behavior I use locally while producing a single binary that can run on Windows, macOS, and Linux.
 
 > [!IMPORTANT]
-> I am going to be straight with you, this is an opinionated build helper built around my personal Godot engine workflow. It is meant to be configurable, but it is not trying to be a generic build system abstraction to serve everyone. I am releasing it as
-> as guesture to the community. You still need to install the compiler toolchains, SDKs, and third-party libraries required to build Godot on your platform. Start with the [Official Godot docs](https://docs.godotengine.org/en/latest/engine_details/development/compiling/compiling_for_windows.html) and make sure your environment matches the upstream requirements before expecting `gbt` to work.
+> I am going to be straight with you, this is an opinionated build helper built around my personal Godot engine workflow. It is meant to be configurable, but it is not trying to be a generic build system abstraction to serve everyone. I am releasing it as a gesture to the community. You still need to install the compiler toolchains, SDKs, and third-party libraries required to build Godot on your platform. Start with the [Official Godot docs](https://docs.godotengine.org/en/latest/engine_details/development/compiling/compiling_for_windows.html) and make sure your environment matches the upstream requirements before expecting `gbt` to work.
 
 > [!NOTE]
 > The `doctor` command is there to show you what is missing or misconfigured in your local environment. It does not try to install toolchains, SDKs, Visual Studio workloads, or other Godot build dependencies for you.
@@ -22,6 +20,19 @@ I built this project as the Go rewrite of my personal `godot_build.py` workflow.
 
 > [!TIP]
 > Windows PATH handling is messy, especially once you mix user installs, per-shell environments, spaces in paths, and multiple engine binaries. That is why `gbt` creates user-level `.cmd` shims in a personal bin directory instead of expecting raw engine paths to behave nicely everywhere.
+
+## Quick Start
+
+If you want the shortest first-run path:
+
+```powershell
+gbt doctor
+gbt onboard
+gbt update
+gbt install-cli
+```
+
+Run `gbt update --stable` if you want the stable channel instead of the default dev workflow.
 
 ## GBT Commands
 
@@ -60,16 +71,15 @@ The CLI currently stores config in:
 
 That path still uses `godot-build` for compatibility while the visible CLI command is `gbt`.
 
-The generated starter config is intentionally generic. It will use your user-home-based paths plus the official Godot remote as default. Use the config commands to adjust to your needs and build folder layout
+The generated starter config is intentionally generic. It will use your user-home-based paths plus the official Godot remote as default. Use the config commands to adjust to your needs and build folder layout.
 
 Example starter config:
 
 ```toml
-```toml
 [paths]
-bin_dir = "C:\Users\<YourUsername>\bin"
-build_root = "D:\Builds"
-deploy_dir = "C:\Users\<YourUsername>\Engines\Godot\current"
+bin_dir = 'C:\Users\<YourUsername>\bin'
+build_root = 'D:\Builds'
+deploy_dir = 'C:\Users\<YourUsername>\Engines\Godot\current'
 
 [branches]
 dev = "master"
@@ -81,8 +91,7 @@ jobs = 8
 
 [repos.godot]
 git = "https://github.com/godotengine/godot.git"
-path = "D:\Builds\godot"
-```
+path = 'D:\Builds\godot'
 ```
 
 On a real machine those `~` paths resolve to the current user's home directory. If your layout is different, change them with the `config` command.
@@ -276,7 +285,6 @@ go run .\cmd\godot-build --help
 - Any personal forks or alternate repo layouts should be added explicitly through `config repo add`.
 - The CLI shim flow is designed around a user-level personal bin so it can avoid permission problems.
 - `install-self` is meant to make `gbt` itself easy to place on PATH without admin rights.
-
 
 [build-badge]: https://github.com/regiellis/godot-build-tools/actions/workflows/ci.yml/badge.svg
 [build-workflow]: https://github.com/regiellis/godot-build-tools/actions/workflows/ci.yml

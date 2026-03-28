@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -180,15 +181,42 @@ func (a *app) writeShimAt(binDir, name, target string) error {
 	return a.writeFile(a.cliShimPathFor(binDir, name), []byte(shimContent(target)), 0o644)
 }
 
-func (a *app) refreshShims() {
+func (a *app) refreshShims() error {
 	targets := a.cliTargets(false)
 	for name, target := range targets {
 		if _, err := os.Stat(a.cliShimPath(name)); err == nil {
 			if _, err := os.Stat(target); err == nil || a.dryRun {
-				_ = a.writeShim(name, target)
+				if err := a.writeShim(name, target); err != nil {
+					return fmt.Errorf("refresh shim %s: %w", name, err)
+				}
 			}
 		}
 	}
+	return nil
+}
+
+func parseRegistryPathQuery(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToLower(line), "path") {
+			continue
+		}
+		for _, valueType := range []string{"REG_EXPAND_SZ", "REG_SZ"} {
+			if idx := strings.Index(line, valueType); idx >= 0 {
+				return strings.TrimSpace(line[idx+len(valueType):])
+			}
+		}
+	}
+	return ""
+}
+
+func normalizePathEntry(path string) string {
+	path = strings.TrimSpace(strings.Trim(path, `"`))
+	path = strings.TrimRight(path, `\/`)
+	if path == "" {
+		return ""
+	}
+	return filepath.Clean(path)
 }
 
 func (a *app) readUserPath() string {
@@ -199,13 +227,7 @@ func (a *app) readUserPath() string {
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && strings.EqualFold(fields[0], "Path") {
-			return strings.Join(fields[2:], " ")
-		}
-	}
-	return ""
+	return parseRegistryPathQuery(out)
 }
 
 func (a *app) writeUserPath(value string) error {
@@ -216,11 +238,10 @@ func (a *app) writeUserPath(value string) error {
 }
 
 func pathContains(pathValue, wanted string) bool {
-	wanted = strings.ToLower(strings.TrimRight(wanted, `\\`))
+	wanted = normalizePathEntry(wanted)
 	for _, part := range strings.Split(pathValue, ";") {
-		part = strings.ToLower(strings.Trim(strings.TrimSpace(part), `"`))
-		part = strings.TrimRight(part, `\\`)
-		if part != "" && part == wanted {
+		part = normalizePathEntry(part)
+		if part != "" && strings.EqualFold(part, wanted) {
 			return true
 		}
 	}
@@ -253,14 +274,17 @@ func (a *app) removeCLIPathDir(binDir string) (bool, error) {
 	}
 	kept := []string{}
 	removed := false
+	binDir = normalizePathEntry(binDir)
 	for _, p := range strings.Split(current, ";") {
-		if pathContains(p, binDir) {
+		normalized := normalizePathEntry(p)
+		if normalized == "" {
+			continue
+		}
+		if strings.EqualFold(normalized, binDir) {
 			removed = true
 			continue
 		}
-		if strings.TrimSpace(p) != "" {
-			kept = append(kept, p)
-		}
+		kept = append(kept, p)
 	}
 	if !removed {
 		return false, nil
@@ -308,6 +332,10 @@ func (a *app) removeFile(path string) error {
 }
 
 func copyFile(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -316,7 +344,7 @@ func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	out, err := os.Create(dst)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
 		return err
 	}
@@ -324,11 +352,19 @@ func copyFile(src, dst string) error {
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
 	return out.Close()
 }
 
 func samePath(aPath, bPath string) bool {
-	return filepath.Clean(aPath) == filepath.Clean(bPath)
+	aPath = filepath.Clean(aPath)
+	bPath = filepath.Clean(bPath)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(aPath, bPath)
+	}
+	return aPath == bPath
 }
 
 func filesEqual(aPath, bPath string) (bool, error) {
@@ -388,5 +424,5 @@ func sortedMapKeys[T any](m map[string]T) []string {
 }
 
 func errorsIs(err, target error) bool {
-	return err != nil && target != nil && strings.Contains(err.Error(), target.Error())
+	return errors.Is(err, target)
 }

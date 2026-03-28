@@ -274,6 +274,9 @@ func (c *Config) RemoveRepo(name string) error {
 	if _, ok := c.Repos[name]; !ok {
 		return fmt.Errorf("unknown repo: %s", name)
 	}
+	if name == c.Defaults.Repo {
+		return fmt.Errorf("cannot remove %q because it is the default repo; change defaults.repo first", name)
+	}
 	delete(c.Repos, name)
 	return nil
 }

@@ -480,8 +480,7 @@ func (a *app) cmdDeploy(global globalOptions, args []string) error {
 	fs, err := parseCommandFlags("deploy", args, func(fs *flag.FlagSet) {
 		fs.Bool("mono", false, "Deploy Mono build")
 		fs.Bool("stable", false, "Deploy stable slot")
-		fs.Bool("yes", false, "Skip confirmation")
-		fs.Bool("y", false, "Skip confirmation")
+
 		fs.SetOutput(a.ui.Stdout())
 	})
 	if err != nil {
@@ -502,8 +501,7 @@ func (a *app) cmdDeploy(global globalOptions, args []string) error {
 func (a *app) cmdDeployTemplates(global globalOptions, args []string) error {
 	fs, err := parseCommandFlags("deploy-templates", args, func(fs *flag.FlagSet) {
 		fs.String("version", "", "Override version")
-		fs.Bool("yes", false, "Skip confirmation")
-		fs.Bool("y", false, "Skip confirmation")
+
 		fs.SetOutput(a.ui.Stdout())
 	})
 	if err != nil {
@@ -518,8 +516,7 @@ func (a *app) cmdDeployTemplates(global globalOptions, args []string) error {
 
 func (a *app) cmdBuildDeploy(global globalOptions, args []string) error {
 	fs := flag.NewFlagSet("build-deploy", flag.ContinueOnError)
-	yes := fs.Bool("yes", false, "Skip confirmation")
-	fs.BoolVar(yes, "y", false, "Skip confirmation")
+
 	stable := fs.Bool("stable", false, "Use stable channel")
 	noTemplates := fs.Bool("no-templates", false, "Skip templates")
 	d3d12, vulkan, lto, llvm, dev, mono, jobs := a.parseBuildFlags(fs)
@@ -571,8 +568,7 @@ func (a *app) cmdBuildDeploy(global globalOptions, args []string) error {
 
 func (a *app) cmdUpdate(global globalOptions, args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
-	yes := fs.Bool("yes", false, "Skip confirmation")
-	fs.BoolVar(yes, "y", false, "Skip confirmation")
+
 	stable := fs.Bool("stable", false, "Use stable channel")
 	noTemplates := fs.Bool("no-templates", false, "Skip templates")
 	d3d12, vulkan, lto, llvm, dev, mono, jobs := a.parseBuildFlags(fs)
