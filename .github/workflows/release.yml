@@ -100,5 +100,4 @@ jobs:
           files: |
             dist/*.zip
             dist/*.tar.gz
-          body_path: RELEASE_NOTES.md
           generate_release_notes: true

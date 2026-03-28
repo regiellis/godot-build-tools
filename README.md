@@ -33,6 +33,27 @@ gbt install-cli
 ```
 
 Run `gbt update --stable` if you want the stable channel instead of the default dev workflow.
+## Machine Output
+
+Use `--json` when you want structured output for scripts or tooling.
+
+Supported JSON commands:
+
+- `gbt --json version`
+- `gbt --json which`
+- `gbt --json presets`
+- `gbt --json list`
+- `gbt --json info`
+- `gbt --json config`
+- `gbt --json config show`
+- `gbt --json config path`
+- `gbt --json config keys`
+- `gbt --json config validate`
+- `gbt --json config get <key>`
+- `gbt --json --print-config`
+
+Commands that stream external tools, like `build`, `update`, `pull`, or `deploy`, intentionally reject `--json` for now instead of mixing logs with structured output.
+
 
 ## GBT Commands
 
@@ -116,6 +137,7 @@ Show the resolved config:
 
 ```powershell
 gbt config show
+gbt --json config show
 ```
 
 List editable keys:
@@ -276,6 +298,7 @@ Or directly:
 go test ./...
 go build -o gbt.exe ./cmd/godot-build
 go run .\cmd\godot-build --help
+go run .\cmd\godot-build --json version
 ```
 
 ## Notes
@@ -288,3 +311,4 @@ go run .\cmd\godot-build --help
 
 [build-badge]: https://github.com/regiellis/godot-build-tools/actions/workflows/ci.yml/badge.svg
 [build-workflow]: https://github.com/regiellis/godot-build-tools/actions/workflows/ci.yml
+

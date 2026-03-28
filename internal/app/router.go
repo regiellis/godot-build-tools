@@ -236,6 +236,8 @@ func (a *app) printMainHelp() {
 	a.ui.Table("Examples", nil, [][]ui.Cell{
 		{{Text: progName + " version", Style: "cmd"}, {Text: "Show the current GBT build information", Style: "muted"}},
 		{{Text: progName + " which", Style: "cmd"}, {Text: "Inspect the resolved repo and install paths", Style: "muted"}},
+		{{Text: progName + " --json version", Style: "cmd"}, {Text: "Emit version info as JSON", Style: "muted"}},
+		{{Text: progName + " --json config show", Style: "cmd"}, {Text: "Emit the resolved config as JSON", Style: "muted"}},
 		{{Text: progName + " --dry-run update --stable", Style: "cmd"}, {Text: "Preview a stable update without changing anything", Style: "muted"}},
 		{{Text: progName + " onboard", Style: "cmd"}, {Text: "Create the starter config", Style: "muted"}},
 		{{Text: progName + " install-self", Style: "cmd"}, {Text: "Install gbt.exe into your personal bin", Style: "muted"}},
