@@ -13,6 +13,9 @@ import (
 )
 
 func (a *app) cmdPull(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("pull")
+	}
 	repo, err := a.repoPath(global.repo)
 	if err != nil {
 		return err
@@ -25,6 +28,9 @@ func (a *app) cmdPull(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdCheckout(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("checkout")
+	}
 	if len(args) == 0 {
 		return usageError("usage: checkout <branch>")
 	}
@@ -44,6 +50,9 @@ func (a *app) cmdCheckout(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdStatus(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("status")
+	}
 	repo, err := a.repoPath(global.repo)
 	if err != nil {
 		return err
@@ -56,6 +65,9 @@ func (a *app) cmdStatus(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdBranches(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("branches")
+	}
 	repo, err := a.repoPath(global.repo)
 	if err != nil {
 		return err
@@ -65,6 +77,9 @@ func (a *app) cmdBranches(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdVersion(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.writeJSON(a.jsonVersionPayload())
+	}
 	a.ui.Panel("GBT Version", "Build information for the current gbt binary")
 	a.ui.Table("Version", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, a.versionRows())
 	return nil
@@ -91,6 +106,44 @@ func (a *app) cmdWhich(global globalOptions, args []string) error {
 	}
 	guiName, consoleName := a.deployedNames(channel, mono)
 	repoCfg := a.cfg.Repos[global.repo]
+	if a.jsonOutput {
+		shims := []map[string]string{}
+		targets := a.cliTargets(mono)
+		for _, name := range sortedMapKeys(targets) {
+			shims = append(shims, map[string]string{
+				"command": name,
+				"shim":    a.cliShimPath(name),
+				"target":  targets[name],
+			})
+		}
+		return a.writeJSON(map[string]any{
+			"version": a.jsonVersionPayload(),
+			"repository": map[string]string{
+				"repo":  global.repo,
+				"git":   repoCfg.Git,
+				"path":  repo,
+				"scons": a.sconsPath(),
+			},
+			"channels": map[string]any{
+				"dev_branch":       a.cfg.Branches.Dev,
+				"stable_branch":    a.cfg.Branches.Stable,
+				"selected_channel": channel,
+				"mono":             mono,
+			},
+			"install_paths": map[string]string{
+				"build_root":    a.cfg.Paths.BuildRoot,
+				"deploy_dir":    a.cfg.Paths.DeployDir,
+				"bin_dir":       a.cfg.Paths.BinDir,
+				"templates_dir": filepath.Join(os.Getenv("APPDATA"), "Godot", "export_templates"),
+			},
+			"resolved_targets": map[string]string{
+				"gui_binary":     filepath.Join(a.cfg.Paths.DeployDir, guiName),
+				"console_binary": filepath.Join(a.cfg.Paths.DeployDir, consoleName),
+				"metadata":       a.deployMetaPath(channel),
+			},
+			"cli_shims": shims,
+		})
+	}
 
 	a.ui.Panel("Which", "Resolved paths and commands for the current config")
 	a.ui.Table("Version", []ui.Cell{{Text: "Field"}, {Text: "Value"}}, a.versionRows())
@@ -126,6 +179,9 @@ func (a *app) cmdWhich(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("install-self")
+	}
 	fs, err := parseCommandFlags("install-self", args, func(fs *flag.FlagSet) {
 		fs.String("bin-dir", "", "Override the user bin directory for this install")
 		fs.Bool("no-path", false, "Do not add the bin directory to the user PATH")
@@ -214,6 +270,9 @@ func (a *app) cmdInstallSelf(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("install-cli")
+	}
 	fs, err := parseCommandFlags("install-cli", args, func(fs *flag.FlagSet) {
 		fs.Bool("mono", false, "Prefer Mono/C# target")
 		fs.String("bin-dir", "", "Override the user bin directory for this install")
@@ -317,6 +376,9 @@ func (a *app) cmdInstallCLI(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdUninstallCLI(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("uninstall-cli")
+	}
 	fs, err := parseCommandFlags("uninstall-cli", args, func(fs *flag.FlagSet) {
 		fs.String("bin-dir", "", "Override the user bin directory for this uninstall")
 		fs.Bool("remove-path", false, "Remove bin dir from PATH")
@@ -360,6 +422,9 @@ func (a *app) cmdUninstallCLI(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdBuild(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("build")
+	}
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	d3d12, vulkan, lto, llvm, dev, mono, jobs := a.parseBuildFlags(fs)
 	fs.SetOutput(a.ui.Stdout())
@@ -394,6 +459,9 @@ func (a *app) cmdBuild(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdCustom(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("custom")
+	}
 	fs := flag.NewFlagSet("custom", flag.ContinueOnError)
 	d3d12, vulkan, lto, llvm, dev, mono, jobs := a.parseBuildFlags(fs)
 	fs.SetOutput(a.ui.Stdout())
@@ -414,6 +482,19 @@ func (a *app) cmdCustom(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdPresets(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		items := make([]map[string]any, 0, len(presets))
+		for _, name := range sortedPresetNames() {
+			p := presets[name]
+			items = append(items, map[string]any{
+				"name":        name,
+				"description": p.Desc,
+				"scons_args":  p.Args,
+				"batch":       p.Batch,
+			})
+		}
+		return a.writeJSON(map[string]any{"presets": items})
+	}
 	rows := [][]ui.Cell{}
 	for _, name := range sortedPresetNames() {
 		p := presets[name]
@@ -428,6 +509,9 @@ func (a *app) cmdPresets(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdClean(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("clean")
+	}
 	repo, err := a.repoPath(global.repo)
 	if err != nil {
 		return err
@@ -451,8 +535,7 @@ func (a *app) cmdList(global globalOptions, args []string) error {
 	if info.Dirty {
 		title += " (dirty)"
 	}
-	a.ui.Panel("Binaries", title+"\n"+binDir)
-	rows := [][]ui.Cell{}
+	files := []map[string]any{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".exe") {
 			continue
@@ -465,11 +548,30 @@ func (a *app) cmdList(global globalOptions, args []string) error {
 		if strings.Contains(e.Name(), ".console.") {
 			tag = "console"
 		}
+		files = append(files, map[string]any{
+			"name":       e.Name(),
+			"size_bytes": st.Size(),
+			"modified":   st.ModTime().Format("2006-01-02 15:04"),
+			"variant":    tag,
+		})
+	}
+	if a.jsonOutput {
+		return a.writeJSON(map[string]any{
+			"repo":     global.repo,
+			"path":     repo,
+			"bin_dir":  binDir,
+			"git":      info,
+			"binaries": files,
+		})
+	}
+	a.ui.Panel("Binaries", title+"\n"+binDir)
+	rows := [][]ui.Cell{}
+	for _, item := range files {
 		rows = append(rows, []ui.Cell{
-			{Text: e.Name(), Style: "info-cmd"},
-			{Text: fmt.Sprintf("%.1f MB", float64(st.Size())/(1024*1024)), Style: "muted"},
-			{Text: st.ModTime().Format("2006-01-02 15:04"), Style: "muted"},
-			{Text: tag, Style: "muted"},
+			{Text: item["name"].(string), Style: "info-cmd"},
+			{Text: fmt.Sprintf("%.1f MB", float64(item["size_bytes"].(int64))/(1024*1024)), Style: "muted"},
+			{Text: item["modified"].(string), Style: "muted"},
+			{Text: item["variant"].(string), Style: "muted"},
 		})
 	}
 	a.ui.Table("", []ui.Cell{{Text: "File"}, {Text: "Size"}, {Text: "Modified"}, {Text: ""}}, rows)
@@ -477,6 +579,9 @@ func (a *app) cmdList(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdDeploy(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("deploy")
+	}
 	fs, err := parseCommandFlags("deploy", args, func(fs *flag.FlagSet) {
 		fs.Bool("mono", false, "Deploy Mono build")
 		fs.Bool("stable", false, "Deploy stable slot")
@@ -499,6 +604,9 @@ func (a *app) cmdDeploy(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdDeployTemplates(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("deploy-templates")
+	}
 	fs, err := parseCommandFlags("deploy-templates", args, func(fs *flag.FlagSet) {
 		fs.String("version", "", "Override version")
 
@@ -515,6 +623,9 @@ func (a *app) cmdDeployTemplates(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdBuildDeploy(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("build-deploy")
+	}
 	fs := flag.NewFlagSet("build-deploy", flag.ContinueOnError)
 
 	stable := fs.Bool("stable", false, "Use stable channel")
@@ -567,6 +678,9 @@ func (a *app) cmdBuildDeploy(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdUpdate(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("update")
+	}
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 
 	stable := fs.Bool("stable", false, "Use stable channel")
@@ -624,6 +738,7 @@ func (a *app) cmdUpdate(global globalOptions, args []string) error {
 }
 
 func (a *app) cmdInfo(global globalOptions, args []string) error {
+	items := []map[string]any{}
 	rows := [][]ui.Cell{}
 	for _, p := range []string{a.deployMetaPath("dev"), a.deployMetaPath("stable")} {
 		if !fileExists(p) {
@@ -637,6 +752,11 @@ func (a *app) cmdInfo(global globalOptions, args []string) error {
 		if err := json.Unmarshal(data, &meta); err != nil {
 			return err
 		}
+		items = append(items, map[string]any{
+			"slot":          metadataSlot(p),
+			"metadata_path": p,
+			"deployment":    meta,
+		})
 		for _, file := range meta.DeployedFiles {
 			rows = append(rows, []ui.Cell{
 				{Text: filepath.Base(p), Style: "info-cmd"},
@@ -646,6 +766,9 @@ func (a *app) cmdInfo(global globalOptions, args []string) error {
 				{Text: meta.DeployedAt, Style: "muted"},
 			})
 		}
+	}
+	if a.jsonOutput {
+		return a.writeJSON(map[string]any{"deployments": items})
 	}
 	if len(rows) == 0 {
 		a.ui.Warning("No deployed build metadata found")

@@ -7,8 +7,9 @@ type preset struct {
 }
 
 type globalOptions struct {
-	repo   string
-	dryRun bool
+	repo       string
+	dryRun     bool
+	jsonOutput bool
 }
 
 type deployMeta struct {
@@ -24,16 +25,16 @@ type deployMeta struct {
 }
 
 type gitInfo struct {
-	Branch     string
-	Commit     string
-	CommitFull string
-	Dirty      bool
+	Branch     string `json:"branch"`
+	Commit     string `json:"commit"`
+	CommitFull string `json:"commit_full"`
+	Dirty      bool   `json:"dirty"`
 }
 
 type toolVersion struct {
-	Version   string
-	Commit    string
-	BuildDate string
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuildDate string `json:"build_date"`
 }
 
 var versionInfo = toolVersion{

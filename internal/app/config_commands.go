@@ -11,6 +11,22 @@ import (
 
 func (a *app) cmdConfig(global globalOptions, args []string) error {
 	if len(args) == 0 {
+		if a.jsonOutput {
+			return a.writeJSON(map[string]any{
+				"config": a.jsonConfig(),
+				"commands": []string{
+					"show",
+					"path",
+					"keys",
+					"validate",
+					"get <key>",
+					"set <key> <value>",
+					"unset <key>",
+					"repo add <name> <git> <path>",
+					"repo remove <name>",
+				},
+			})
+		}
 		a.ui.Panel("Config", a.cfg.ConfigPath)
 		a.ui.Markdown(a.cfg.DebugMarkdown())
 		a.ui.Table("Config Commands", []ui.Cell{{Text: "Command"}, {Text: "Description"}}, [][]ui.Cell{
@@ -30,13 +46,22 @@ func (a *app) cmdConfig(global globalOptions, args []string) error {
 	rest := args[1:]
 	switch sub {
 	case "show":
+		if a.jsonOutput {
+			return a.writeJSON(map[string]any{"config": a.jsonConfig()})
+		}
 		a.ui.Panel("Config", a.cfg.ConfigPath)
 		a.ui.Markdown(a.cfg.DebugMarkdown())
 		return nil
 	case "path":
+		if a.jsonOutput {
+			return a.writeJSON(map[string]string{"config_path": a.cfg.ConfigPath})
+		}
 		a.ui.Panel("Config Path", a.cfg.ConfigPath)
 		return nil
 	case "keys":
+		if a.jsonOutput {
+			return a.writeJSON(map[string]any{"keys": config.KnownKeys()})
+		}
 		rows := [][]ui.Cell{}
 		for _, key := range config.KnownKeys() {
 			rows = append(rows, []ui.Cell{{Text: key, Style: "info-cmd"}})
@@ -179,6 +204,20 @@ func (a *app) cmdConfigRepo(args []string) error {
 
 func (a *app) cmdConfigValidate() error {
 	issues := a.cfg.Validate()
+	if a.jsonOutput {
+		payload := map[string]any{
+			"config_path": a.cfg.ConfigPath,
+			"ok":          len(issues) == 0,
+			"issues":      jsonValidationIssues(issues),
+		}
+		if err := a.writeJSON(payload); err != nil {
+			return err
+		}
+		if len(issues) == 0 {
+			return nil
+		}
+		return fmt.Errorf("Config has %d issue(s). Fix the failing keys before relying on this setup.", len(issues))
+	}
 	rows := [][]ui.Cell{}
 	for _, issue := range issues {
 		style := "warning"
@@ -234,14 +273,25 @@ func (a *app) printConfigKey(key string) error {
 	if !found {
 		return fmt.Errorf("Unknown config key %q.", key)
 	}
-	if value == "" {
+	empty := value == ""
+	if empty {
 		value = "(empty)"
+	}
+	if a.jsonOutput {
+		return a.writeJSON(map[string]any{
+			"key":   key,
+			"value": value,
+			"empty": empty,
+		})
 	}
 	a.ui.Table("Config Value", []ui.Cell{{Text: "Key"}, {Text: "Value"}}, [][]ui.Cell{{{Text: key, Style: "info-cmd"}, {Text: value, Style: "val"}}})
 	return nil
 }
 
 func (a *app) cmdOnboard(global globalOptions, args []string) error {
+	if a.jsonOutput {
+		return a.jsonUnsupported("onboard")
+	}
 	fs, err := parseCommandFlags("onboard", args, func(fs *flag.FlagSet) {
 		fs.Bool("force", false, "Overwrite existing config")
 		fs.SetOutput(a.ui.Stdout())

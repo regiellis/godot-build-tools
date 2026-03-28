@@ -18,7 +18,15 @@ func (a *app) run(args []string) int {
 		return code
 	}
 	a.dryRun = global.dryRun
+	a.jsonOutput = global.jsonOutput
 	if printConfig {
+		if a.jsonOutput {
+			if err := a.writeJSON(map[string]any{"config": a.jsonConfig()}); err != nil {
+				a.ui.Error(err.Error())
+				return 1
+			}
+			return 0
+		}
 		a.ui.Markdown(a.cfg.DebugMarkdown())
 		return 0
 	}
@@ -79,12 +87,21 @@ func (a *app) run(args []string) int {
 		a.printMainHelp()
 		return 0
 	default:
-		a.ui.Error(fmt.Sprintf("Unknown command %q. Run `gbt --help` to see the supported commands.", cmd))
+		err = fmt.Errorf("Unknown command %q. Run `gbt --help` to see the supported commands.", cmd)
 		a.printMainHelp()
+		if a.jsonOutput {
+			a.writeJSONError(err)
+		} else {
+			a.ui.Error(err.Error())
+		}
 		return 2
 	}
 	if err != nil {
-		a.ui.Error(err.Error())
+		if a.jsonOutput {
+			a.writeJSONError(err)
+		} else {
+			a.ui.Error(err.Error())
+		}
 		return 1
 	}
 	return 0
@@ -105,6 +122,9 @@ func (a *app) parseGlobal(args []string) (globalOptions, []string, bool, int) {
 		case "--dry-run":
 			global.dryRun = true
 			args = args[1:]
+		case "--json":
+			global.jsonOutput = true
+			args = args[1:]
 		case "--print-config":
 			printConfig = true
 			args = args[1:]
@@ -119,6 +139,43 @@ func (a *app) parseGlobal(args []string) (globalOptions, []string, bool, int) {
 }
 
 func (a *app) printMainHelp() {
+	if a.jsonOutput {
+		_ = a.writeJSON(map[string]any{
+			"program": progName,
+			"global_options": []map[string]string{
+				{"name": "--repo, -r", "description": fmt.Sprintf("Repository to use (default: %s)", a.cfg.Defaults.Repo)},
+				{"name": "--dry-run", "description": "Show what would run or be copied without changing anything"},
+				{"name": "--json", "description": "Emit structured JSON for supported commands"},
+				{"name": "-h, --help", "description": "Show this help message"},
+				{"name": "--print-config", "description": "Print the resolved config and exit"},
+			},
+			"commands": []map[string]string{
+				{"name": "pull", "group": "git", "description": "Pull latest from origin (fast-forward only)"},
+				{"name": "checkout", "group": "git", "description": "Checkout a branch"},
+				{"name": "status", "group": "git", "description": "Show git status and recent commits"},
+				{"name": "branches", "group": "git", "description": "List all branches (local + remote)"},
+				{"name": "doctor", "group": "build", "description": "Check environment, config, and toolchain prerequisites"},
+				{"name": "version", "group": "build", "description": "Show GBT version and build information"},
+				{"name": "which", "group": "build", "description": "Show the resolved repo, deploy paths, and shim targets"},
+				{"name": "install-self", "group": "build", "description": "Install the gbt binary into your personal bin"},
+				{"name": "install-cli", "group": "build", "description": "Install godot/godot-dev launch shims"},
+				{"name": "uninstall-cli", "group": "build", "description": "Remove installed launch shims"},
+				{"name": "build", "group": "build", "description": "Run a build preset"},
+				{"name": "build-deploy", "group": "build", "description": "Build preset, deploy it, and install templates"},
+				{"name": "update", "group": "build", "description": "Pull + build + deploy + install templates"},
+				{"name": "custom", "group": "build", "description": "Run scons with custom arguments"},
+				{"name": "clean", "group": "build", "description": "Clean build artifacts"},
+				{"name": "deploy", "group": "deploy", "description": "Deploy built editor as godot-dev or godot"},
+				{"name": "deploy-templates", "group": "deploy", "description": "Deploy export templates to Godot appdata"},
+				{"name": "onboard", "group": "info", "description": "Create a starter config and show next steps"},
+				{"name": "config", "group": "info", "description": "Show or modify saved user config"},
+				{"name": "presets", "group": "info", "description": "List available build presets"},
+				{"name": "list", "group": "info", "description": "Show built binaries in bin/"},
+				{"name": "info", "group": "info", "description": "Show deployed build details"},
+			},
+		})
+		return
+	}
 	subtitle := "Current repo: " + a.ui.Styled("key", a.cfg.Defaults.Repo)
 	if a.dryRun {
 		subtitle += "\n" + a.ui.Styled("warning", "Dry-run mode is active")
@@ -132,6 +189,7 @@ func (a *app) printMainHelp() {
 	a.ui.Table("Global Options", nil, [][]ui.Cell{
 		{{Text: "--repo, -r", Style: "key"}, {Text: fmt.Sprintf("Repository to use (default: %s)", a.cfg.Defaults.Repo), Style: "val"}},
 		{{Text: "--dry-run", Style: "key"}, {Text: "Show what would run or be copied without changing anything", Style: "val"}},
+		{{Text: "--json", Style: "key"}, {Text: "Emit structured JSON for supported commands", Style: "val"}},
 		{{Text: "-h, --help", Style: "key"}, {Text: "Show this help message", Style: "val"}},
 		{{Text: "--print-config", Style: "key"}, {Text: "Print the resolved config and exit", Style: "val"}},
 	})

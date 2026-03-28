@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +45,7 @@ func newTestApp(t *testing.T) (*app, *bytes.Buffer, *bytes.Buffer) {
 
 func TestParseGlobalDryRun(t *testing.T) {
 	a, _, _ := newTestApp(t)
-	global, rest, printConfig, code := a.parseGlobal([]string{"--dry-run", "--repo", "godot", "version"})
+	global, rest, printConfig, code := a.parseGlobal([]string{"--dry-run", "--json", "--repo", "godot", "version"})
 	if code != 0 {
 		t.Fatalf("unexpected code: %d", code)
 	}
@@ -53,6 +54,9 @@ func TestParseGlobalDryRun(t *testing.T) {
 	}
 	if !global.dryRun {
 		t.Fatal("expected dryRun to be true")
+	}
+	if !global.jsonOutput {
+		t.Fatal("expected jsonOutput to be true")
 	}
 	if global.repo != "godot" {
 		t.Fatalf("unexpected repo: %s", global.repo)
@@ -79,6 +83,29 @@ func TestCmdVersionShowsVersionInfo(t *testing.T) {
 	}
 }
 
+func TestCmdVersionJSON(t *testing.T) {
+	a, out, _ := newTestApp(t)
+	a.jsonOutput = true
+	old := versionInfo
+	versionInfo = toolVersion{Version: "1.2.3", Commit: "abc123", BuildDate: "2026-03-27"}
+	defer func() { versionInfo = old }()
+
+	if err := a.cmdVersion(globalOptions{repo: "godot"}, nil); err != nil {
+		t.Fatalf("cmdVersion returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid JSON output: %v\n%s", err, out.String())
+	}
+	if payload["version"] != "1.2.3" {
+		t.Fatalf("unexpected version payload: %#v", payload)
+	}
+	if payload["commit"] != "abc123" {
+		t.Fatalf("unexpected commit payload: %#v", payload)
+	}
+}
+
 func TestCmdWhichShowsResolvedTargets(t *testing.T) {
 	a, out, _ := newTestApp(t)
 	oldAppData := os.Getenv("APPDATA")
@@ -95,6 +122,34 @@ func TestCmdWhichShowsResolvedTargets(t *testing.T) {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("expected output to contain %q\n%s", needle, text)
 		}
+	}
+}
+
+func TestCmdWhichJSON(t *testing.T) {
+	a, out, _ := newTestApp(t)
+	a.jsonOutput = true
+	oldAppData := os.Getenv("APPDATA")
+	if err := os.Setenv("APPDATA", filepath.Join(t.TempDir(), "appdata")); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Setenv("APPDATA", oldAppData) }()
+
+	if err := a.cmdWhich(globalOptions{repo: "godot"}, []string{"--stable"}); err != nil {
+		t.Fatalf("cmdWhich returned error: %v", err)
+	}
+
+	var payload struct {
+		ResolvedTargets map[string]string `json:"resolved_targets"`
+		Repository      map[string]string `json:"repository"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid JSON output: %v\n%s", err, out.String())
+	}
+	if payload.Repository["repo"] != "godot" {
+		t.Fatalf("unexpected repo payload: %#v", payload.Repository)
+	}
+	if payload.ResolvedTargets["gui_binary"] != filepath.Join(a.cfg.Paths.DeployDir, "godot.exe") {
+		t.Fatalf("unexpected targets payload: %#v", payload.ResolvedTargets)
 	}
 }
 

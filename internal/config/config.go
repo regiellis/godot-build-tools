@@ -14,39 +14,39 @@ import (
 )
 
 type Config struct {
-	ConfigPath string
-	Created    bool            `toml:"-"`
-	Paths      Paths           `toml:"paths"`
-	Branches   Branches        `toml:"branches"`
-	Defaults   Defaults        `toml:"defaults"`
-	Repos      map[string]Repo `toml:"repos"`
+	ConfigPath string          `json:"config_path"`
+	Created    bool            `toml:"-" json:"created"`
+	Paths      Paths           `toml:"paths" json:"paths"`
+	Branches   Branches        `toml:"branches" json:"branches"`
+	Defaults   Defaults        `toml:"defaults" json:"defaults"`
+	Repos      map[string]Repo `toml:"repos" json:"repos"`
 }
 
 type Paths struct {
-	BinDir    string `toml:"bin_dir"`
-	BuildRoot string `toml:"build_root"`
-	DeployDir string `toml:"deploy_dir"`
+	BinDir    string `toml:"bin_dir" json:"bin_dir"`
+	BuildRoot string `toml:"build_root" json:"build_root"`
+	DeployDir string `toml:"deploy_dir" json:"deploy_dir"`
 }
 
 type Branches struct {
-	Dev    string `toml:"dev"`
-	Stable string `toml:"stable"`
+	Dev    string `toml:"dev" json:"dev"`
+	Stable string `toml:"stable" json:"stable"`
 }
 
 type Defaults struct {
-	Repo string `toml:"repo"`
-	Jobs int    `toml:"jobs"`
+	Repo string `toml:"repo" json:"repo"`
+	Jobs int    `toml:"jobs" json:"jobs"`
 }
 
 type Repo struct {
-	Git  string `toml:"git"`
-	Path string `toml:"path"`
+	Git  string `toml:"git" json:"git"`
+	Path string `toml:"path" json:"path"`
 }
 
 type ValidationIssue struct {
-	Level   string
-	Key     string
-	Message string
+	Level   string `json:"level"`
+	Key     string `json:"key"`
+	Message string `json:"message"`
 }
 
 func Load() (*Config, error) {

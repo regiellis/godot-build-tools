@@ -10,9 +10,10 @@ import (
 )
 
 type app struct {
-	cfg    *config.Config
-	ui     *ui.Renderer
-	dryRun bool
+	cfg        *config.Config
+	ui         *ui.Renderer
+	dryRun     bool
+	jsonOutput bool
 }
 
 func Run(args []string) int {
